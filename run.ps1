@@ -12,7 +12,7 @@ Start-Process -FilePath "$root\..\voice\GPT-SoVITS-v3lora-20250228\runtime\pytho
   -WindowStyle Hidden
 
 # 启动 TTS 桥
-Start-Process python `
+Start-Process -FilePath python `
   -ArgumentList "$root\tts_bridge.py" `
   -WorkingDirectory $root `
   -WindowStyle Hidden
