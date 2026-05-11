@@ -183,7 +183,7 @@ func _add_eyes():
 	lens_mat.emission_energy_multiplier = 2.0
 	
 	# 为每个眼睛骨骼创建 BoneAttachment3D + 蓝色球
-	var offsets := {eye_bone_l: Vector3(-0.0005, 0.0025, 0.001), eye_bone_r: Vector3(-0.0005, 0.0005, 0.001)}
+	var offsets := {eye_bone_l: Vector3(-0.0004, 0.0020, 0.001), eye_bone_r: Vector3(-0.0002, 0.0015, 0.001)}
 	for bone_idx in [eye_bone_l, eye_bone_r]:
 		var bone_attach := BoneAttachment3D.new()
 		bone_attach.name = "EyeAttach_" + sk.get_bone_name(bone_idx)
@@ -193,8 +193,8 @@ func _add_eyes():
 		var sphere := MeshInstance3D.new()
 		sphere.name = "EyeLens_" + sk.get_bone_name(bone_idx)
 		var sm := SphereMesh.new()
-		sm.radius = 0.0030
-		sm.height = 0.0015  # 极扁横向椭圆
+		sm.radius = 0.0015
+		sm.height = 0.0020  # 微扁椭圆
 		sphere.mesh = sm
 		sphere.set_surface_override_material(0, lens_mat)
 		sphere.position = offsets[bone_idx]  # 微调偏移
@@ -518,8 +518,8 @@ func _lens_update(_delta: float):
 	if mat_r: mat_r.emission_energy_multiplier = energy
 	
 	# ---- 应用大小 ----
-	const BASE_RADIUS := 0.0030
-	const BASE_HEIGHT := 0.0015
+	const BASE_RADIUS := 0.0010
+	const BASE_HEIGHT := 0.0040
 	var r := BASE_RADIUS * eye_size
 	var h := BASE_HEIGHT * eye_size
 	var sl := _lens_l.mesh as SphereMesh
