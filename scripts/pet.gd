@@ -193,8 +193,8 @@ func _add_eyes():
 		var sphere := MeshInstance3D.new()
 		sphere.name = "EyeLens_" + sk.get_bone_name(bone_idx)
 		var sm := SphereMesh.new()
-		sm.radius = 0.0015
-		sm.height = 0.0030  # height > 2*radius → 纵向椭圆
+		sm.radius = 0.0030
+		sm.height = 0.0015  # 极扁横向椭圆
 		sphere.mesh = sm
 		sphere.set_surface_override_material(0, lens_mat)
 		sphere.position = offsets[bone_idx]  # 微调偏移
@@ -518,8 +518,8 @@ func _lens_update(_delta: float):
 	if mat_r: mat_r.emission_energy_multiplier = energy
 	
 	# ---- 应用大小 ----
-	const BASE_RADIUS := 0.0015
-	const BASE_HEIGHT := 0.0030
+	const BASE_RADIUS := 0.0030
+	const BASE_HEIGHT := 0.0015
 	var r := BASE_RADIUS * eye_size
 	var h := BASE_HEIGHT * eye_size
 	var sl := _lens_l.mesh as SphereMesh
