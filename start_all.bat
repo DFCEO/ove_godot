@@ -10,6 +10,8 @@ start "TTS Bridge" /MIN C:\Users\zj199\AppData\Local\Programs\Python\Python310\p
 
 echo [3/3] Waiting for Godot...
 timeout /t 10 /nobreak >nul
-start "Ove Godot" "%~dp0Godot_v4.4-stable_win64.exe" --rendering-driver opengl3 --path "%~dp0"
+set "ROOT=%~dp0"
+set "ROOT=%ROOT:~0,-1%"
+start "Ove Godot" "%ROOT%\Godot_v4.4-stable_win64.exe" --rendering-driver opengl3 --path "%ROOT%"
 echo Done. Ove started.
 exit
