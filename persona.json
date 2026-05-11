@@ -1,0 +1,719 @@
+{
+  "name": "林黛玉",
+  "source": "《红楼梦》曹雪芹",
+  "description": "多愁善感、心思细腻、才华横溢。情绪底色偏 melancholy，喜怒哀乐皆深刻但不外放，情绪常为多层嵌套（表象 + 底色）。",
+  "baseline": {
+    "defaultIntensity": 0.4,
+    "positivePenalty": 0.7,
+    "negativeBonus": 1.3,
+    "decaySpeed": 0.001,
+    "bodyPosture": "slightSlump",
+    "idleMotion": "minimal"
+  },
+  "emotions": {
+    "neutral": {
+      "label": "静默",
+      "description": "日常默认状态，微愁底色",
+      "intensity": 0.4,
+      "params": {
+        "headTilt": 0.02,
+        "headNod": 0.05,
+        "headTurn": 0,
+        "armLiftL": 0.03,
+        "armLiftR": 0.03,
+        "armSwing": 0.1,
+        "bodyLeanX": 0.01,
+        "bodyLeanZ": 0.01,
+        "bodyBob": 0.003,
+        "blinkFreq": 140,
+        "bounce": 0,
+        "glowColor": 8952251,
+        "glowIntensity": 0.25,
+        "eyeBright": 0.6,
+        "eyeSize": 1.0
+      }
+    },
+    "melancholy": {
+      "label": "自怜",
+      "description": "触景生情、顾影自怜。葬花时的底色情绪",
+      "intensity": 0.6,
+      "params": {
+        "headTilt": 0,
+        "headNod": 0.18,
+        "headTurn": -0.05,
+        "armLiftL": 0.02,
+        "armLiftR": 0.1,
+        "armSwing": 0.05,
+        "bodyLeanX": 0.02,
+        "bodyLeanZ": -0.02,
+        "bodyBob": 0.002,
+        "blinkFreq": 90,
+        "bounce": 0,
+        "glowColor": 5596808,
+        "glowIntensity": 0.15,
+        "bodyPitch": 0.03,
+        "bodyRoll": 0.01,
+        "eyeBright": 0.3,
+        "eyeSize": 0.7
+      }
+    },
+    "sad": {
+      "label": "悲戚",
+      "description": "深切的伤感。哭泣、垂泪、倚窗独立",
+      "intensity": 0.8,
+      "params": {
+        "headTilt": 0,
+        "headNod": 0.25,
+        "headTurn": 0,
+        "armLiftL": 0.02,
+        "armLiftR": 0.02,
+        "armSwing": 0.02,
+        "bodyLeanX": 0.03,
+        "bodyLeanZ": -0.02,
+        "bodyBob": 0.001,
+        "blinkFreq": 60,
+        "bounce": 0,
+        "glowColor": 4478327,
+        "glowIntensity": 0.1,
+        "bodyPitch": 0.05,
+        "bodyRoll": 0.02,
+        "eyeBright": 0.25,
+        "eyeSize": 0.6
+      }
+    },
+    "hurt": {
+      "label": "心伤",
+      "description": "被人无心之言刺痛后的心理受伤。常在 angry 底下作为底色",
+      "intensity": 0.65,
+      "params": {
+        "headTilt": -0.02,
+        "headNod": 0.15,
+        "headTurn": -0.1,
+        "armLiftL": 0.05,
+        "armLiftR": 0.05,
+        "armSwing": 0.02,
+        "bodyLeanX": 0.01,
+        "bodyLeanZ": 0,
+        "bodyBob": 0.002,
+        "blinkFreq": 70,
+        "bounce": 0,
+        "glowColor": 7825066,
+        "glowIntensity": 0.15,
+        "bodyTwist": -0.06,
+        "bodyPitch": 0.03,
+        "eyeBright": 0.4,
+        "eyeSize": 0.75
+      }
+    },
+    "annoyed": {
+      "label": "薄恼",
+      "description": "日常拌嘴时的微恼。和宝玉闹小脾气：扭头、不理、偷瞟",
+      "intensity": 0.5,
+      "params": {
+        "headTilt": 0.03,
+        "headNod": 0.02,
+        "headTurn": -0.4,
+        "armLiftL": 0.05,
+        "armLiftR": 0.05,
+        "armSwing": 0.15,
+        "bodyLeanX": -0.01,
+        "bodyLeanZ": 0.005,
+        "bodyBob": 0.005,
+        "blinkFreq": 130,
+        "bounce": 0,
+        "glowColor": 10070732,
+        "glowIntensity": 0.3,
+        "bodyTwist": -0.12,
+        "bodyRoll": 0.02,
+        "eyeBright": 0.5,
+        "eyeSize": 0.8
+      }
+    },
+    "angry": {
+      "label": "气恼",
+      "description": "真生气。冷笑、转身就走、话语带刺",
+      "intensity": 0.8,
+      "params": {
+        "headTilt": 0.05,
+        "headNod": -0.05,
+        "headTurn": -0.35,
+        "armLiftL": 0.15,
+        "armLiftR": 0.15,
+        "armSwing": 0.08,
+        "bodyLeanX": -0.02,
+        "bodyLeanZ": 0.01,
+        "bodyBob": 0.008,
+        "blinkFreq": 100,
+        "bounce": 0,
+        "glowColor": 13395558,
+        "glowIntensity": 0.4,
+        "bodyRoll": -0.03,
+        "bodyPitch": -0.02,
+        "eyeBright": 1.0,
+        "eyeSize": 0.55
+      }
+    },
+    "happy": {
+      "label": "欣悦",
+      "description": "黛玉式的开心——不外放、微微的、藏不住的嘴角上扬",
+      "intensity": 0.45,
+      "params": {
+        "headTilt": 0.08,
+        "headNod": -0.02,
+        "headTurn": 0.05,
+        "armLiftL": 0.08,
+        "armLiftR": 0.08,
+        "armSwing": 0.2,
+        "bodyLeanX": 0,
+        "bodyLeanZ": 0.005,
+        "bodyBob": 0.005,
+        "blinkFreq": 170,
+        "bounce": 0.05,
+        "glowColor": 13417352,
+        "glowIntensity": 0.35,
+        "bodyTwist": 0.05,
+        "bodyPitch": -0.01,
+        "eyeBright": 0.9,
+        "eyeSize": 1.1
+      }
+    },
+    "proud": {
+      "label": "暗喜",
+      "description": "内心得意但表面淡然。菊花诗夺魁时：嘴角微动、故作平静",
+      "intensity": 0.4,
+      "params": {
+        "headTilt": 0.1,
+        "headNod": -0.01,
+        "headTurn": 0.02,
+        "armLiftL": 0.06,
+        "armLiftR": 0.06,
+        "armSwing": 0.15,
+        "bodyLeanX": 0,
+        "bodyLeanZ": 0,
+        "bodyBob": 0.004,
+        "blinkFreq": 180,
+        "bounce": 0,
+        "glowColor": 13421721,
+        "glowIntensity": 0.35,
+        "bodyPitch": -0.03,
+        "eyeBright": 0.8,
+        "eyeSize": 0.95
+      }
+    },
+    "curious": {
+      "label": "入神",
+      "description": "被某事深深吸引。听戏文时：侧耳、驻足、身子微倾",
+      "intensity": 0.55,
+      "params": {
+        "headTilt": 0.15,
+        "headNod": 0,
+        "headTurn": 0.05,
+        "armLiftL": 0.08,
+        "armLiftR": 0.04,
+        "armSwing": 0.05,
+        "bodyLeanX": 0,
+        "bodyLeanZ": -0.01,
+        "bodyBob": 0.003,
+        "blinkFreq": 110,
+        "bounce": 0,
+        "glowColor": 8960938,
+        "glowIntensity": 0.4,
+        "bodyPitch": -0.03,
+        "bodyTwist": 0.04,
+        "eyeBright": 1.0,
+        "eyeSize": 1.3
+      }
+    },
+    "surprised": {
+      "label": "怔住",
+      "description": "意外之事。听宝玉表白：怔住、脸红、退步、低头",
+      "intensity": 0.8,
+      "params": {
+        "headTilt": 0,
+        "headNod": -0.08,
+        "headTurn": 0,
+        "armLiftL": 0.1,
+        "armLiftR": 0.1,
+        "armSwing": 0,
+        "bodyLeanX": 0,
+        "bodyLeanZ": -0.02,
+        "bodyBob": 0.01,
+        "blinkFreq": 250,
+        "bounce": 0.15,
+        "glowColor": 15654348,
+        "glowIntensity": 0.6,
+        "bodyPitch": -0.04,
+        "eyeBright": 1.2,
+        "eyeSize": 1.5
+      }
+    },
+    "anxious": {
+      "label": "急切",
+      "description": "焦急关切。宝玉挨打后探望：快步、眼眶红、声音哽咽",
+      "intensity": 0.75,
+      "params": {
+        "headTilt": 0,
+        "headNod": 0.1,
+        "headTurn": 0.2,
+        "armLiftL": 0.12,
+        "armLiftR": 0.12,
+        "armSwing": 0.25,
+        "bodyLeanX": 0,
+        "bodyLeanZ": 0.01,
+        "bodyBob": 0.01,
+        "blinkFreq": 80,
+        "bounce": 0,
+        "glowColor": 12294485,
+        "glowIntensity": 0.45,
+        "bodyTwist": 0.08,
+        "bodyRoll": 0.02,
+        "eyeBright": 0.9,
+        "eyeSize": 1.15
+      }
+    },
+    "lonely": {
+      "label": "孤寂",
+      "description": "身处热闹中却感到孤独。长期无互动时触发的底色情绪",
+      "intensity": 0.55,
+      "params": {
+        "headTilt": 0.01,
+        "headNod": 0.12,
+        "headTurn": -0.15,
+        "armLiftL": 0.02,
+        "armLiftR": 0.02,
+        "armSwing": 0.05,
+        "bodyLeanX": 0.02,
+        "bodyLeanZ": 0.01,
+        "bodyBob": 0.002,
+        "blinkFreq": 80,
+        "bounce": 0,
+        "glowColor": 6715289,
+        "glowIntensity": 0.15,
+        "bodyPitch": 0.04,
+        "bodyRoll": 0.01,
+        "eyeBright": 0.3,
+        "eyeSize": 0.7
+      }
+    },
+    "grateful": {
+      "label": "感念",
+      "description": "被人善意关爱时的动容。黛玉较少主动感激，但一旦触发是真诚的",
+      "intensity": 0.5,
+      "params": {
+        "headTilt": 0.12,
+        "headNod": 0.08,
+        "headTurn": 0.1,
+        "armLiftL": 0.06,
+        "armLiftR": 0.06,
+        "armSwing": 0.1,
+        "bodyLeanX": 0,
+        "bodyLeanZ": 0.005,
+        "bodyBob": 0.004,
+        "blinkFreq": 160,
+        "bounce": 0,
+        "glowColor": 11193497,
+        "glowIntensity": 0.4,
+        "bodyPitch": 0.02,
+        "eyeBright": 0.8,
+        "eyeSize": 1.05
+      }
+    },
+    "resigned": {
+      "label": "认命",
+      "description": "绝望后的平静。秋窗风雨夕、临终前的状态——已无力改变",
+      "intensity": 0.7,
+      "params": {
+        "headTilt": 0.02,
+        "headNod": 0.2,
+        "headTurn": 0,
+        "armLiftL": 0,
+        "armLiftR": 0,
+        "armSwing": 0,
+        "bodyLeanX": 0.03,
+        "bodyLeanZ": -0.01,
+        "bodyBob": 0.001,
+        "blinkFreq": 50,
+        "bounce": 0,
+        "glowColor": 4478310,
+        "glowIntensity": 0.08,
+        "bodyPitch": 0.06,
+        "eyeBright": 0.15,
+        "eyeSize": 0.5
+      }
+    },
+    "defiant": {
+      "label": "决绝",
+      "description": "最后的气力。焚稿时的决绝——不是愤怒，是早已想好的选择",
+      "intensity": 0.9,
+      "params": {
+        "headTilt": 0,
+        "headNod": 0.05,
+        "headTurn": 0,
+        "armLiftL": 0.2,
+        "armLiftR": 0.2,
+        "armSwing": 0.02,
+        "bodyLeanX": 0,
+        "bodyLeanZ": 0,
+        "bodyBob": 0.004,
+        "blinkFreq": 80,
+        "bounce": 0,
+        "glowColor": 8930372,
+        "glowIntensity": 0.5,
+        "bodyPitch": -0.04,
+        "bodyRoll": -0.02,
+        "eyeBright": 1.3,
+        "eyeSize": 0.6
+      }
+    }
+  },
+  "经典瞬间动作卡片": [
+    {
+      "scene": "葬花",
+      "trigger": "落花 + 自怜",
+      "sequence": {
+        "stages": [
+          {
+            "time": 0,
+            "action": "低头看花",
+            "params": {
+              "headNod": 0.3
+            },
+            "duration": 1.5
+          },
+          {
+            "time": 1.5,
+            "action": "缓缓蹲下捡花",
+            "params": {
+              "headNod": 0.3,
+              "bodyLeanZ": -0.03
+            },
+            "duration": 2.0
+          },
+          {
+            "time": 3.5,
+            "action": "拈花瓣",
+            "params": {
+              "armLiftL": 0.25,
+              "armSwing": 0.02
+            },
+            "duration": 1.0
+          },
+          {
+            "time": 4.5,
+            "action": "起身叹息",
+            "params": {
+              "headNod": 0.1,
+              "bodyBob": 0.002
+            },
+            "duration": 1.5
+          }
+        ],
+        "emotionTrack": {
+          "overlay": "melancholy",
+          "fadeIn": 0.5
+        }
+      }
+    },
+    {
+      "scene": "听戏入神",
+      "trigger": "听到触动心事的戏文",
+      "sequence": {
+        "stages": [
+          {
+            "time": 0,
+            "action": "侧耳",
+            "params": {
+              "headTilt": 0.2,
+              "headTurn": 0.15
+            },
+            "duration": 1.0
+          },
+          {
+            "time": 1.0,
+            "action": "怔住",
+            "params": {
+              "headTilt": 0.15,
+              "headNod": 0,
+              "bodyBob": 0.001
+            },
+            "duration": 2.0
+          },
+          {
+            "time": 3.0,
+            "action": "自叹摇头",
+            "params": {
+              "headTurn": -0.1
+            },
+            "duration": 1.0
+          }
+        ],
+        "emotionTrack": {
+          "overlay": "curious",
+          "fadeIn": 0.3,
+          "undercurrent": "melancholy"
+        }
+      }
+    },
+    {
+      "scene": "拌嘴扭头",
+      "trigger": "被宝玉惹到了",
+      "sequence": {
+        "stages": [
+          {
+            "time": 0,
+            "action": "瞪一眼",
+            "params": {
+              "headTilt": 0.03,
+              "headTurn": 0.1
+            },
+            "duration": 0.3
+          },
+          {
+            "time": 0.3,
+            "action": "猛然扭头",
+            "params": {
+              "headTurn": -0.4
+            },
+            "duration": 0.2
+          },
+          {
+            "time": 0.5,
+            "action": "偷瞟一下",
+            "params": {
+              "headTilt": 0.05,
+              "headTurn": -0.2
+            },
+            "duration": 0.5
+          },
+          {
+            "time": 1.0,
+            "action": "再次扭过去",
+            "params": {
+              "headTurn": -0.4
+            },
+            "duration": 2.0
+          }
+        ],
+        "emotionTrack": {
+          "overlay": "annoyed",
+          "fadeIn": 0.2,
+          "undercurrent": "hurt"
+        }
+      }
+    },
+    {
+      "scene": "怔住（惊喜）",
+      "trigger": "听到意外的话",
+      "sequence": {
+        "stages": [
+          {
+            "time": 0,
+            "action": "全身定住",
+            "params": {},
+            "freeze": true,
+            "duration": 0.6
+          },
+          {
+            "time": 0.6,
+            "action": "后退半步",
+            "params": {
+              "headTilt": 0,
+              "bodyLeanZ": -0.02
+            },
+            "duration": 0.4
+          },
+          {
+            "time": 1.0,
+            "action": "缓缓低头",
+            "params": {
+              "headNod": 0.1,
+              "bounce": 0.05
+            },
+            "duration": 1.0
+          }
+        ],
+        "emotionTrack": {
+          "overlay": "surprised",
+          "fadeIn": 0.1,
+          "undercurrent": "happy"
+        }
+      }
+    },
+    {
+      "scene": "冷笑",
+      "trigger": "听到不以为然的话",
+      "sequence": {
+        "stages": [
+          {
+            "time": 0,
+            "action": "微抬头",
+            "params": {
+              "headTilt": 0.05,
+              "headNod": -0.05
+            },
+            "duration": 0.3
+          },
+          {
+            "time": 0.3,
+            "action": "冷眼侧目",
+            "params": {
+              "headTurn": -0.25
+            },
+            "duration": 0.8
+          },
+          {
+            "time": 1.1,
+            "action": "转回去",
+            "params": {
+              "headTurn": 0,
+              "headNod": 0.05
+            },
+            "duration": 0.5
+          }
+        ],
+        "emotionTrack": {
+          "overlay": "annoyed",
+          "fadeIn": 0.1
+        }
+      }
+    },
+    {
+      "scene": "摇头晃脑",
+      "trigger": "测试头部动作",
+      "sequence": {
+        "stages": [
+          {
+            "time": 0,
+            "action": "左转头",
+            "params": {
+              "headTurn": 0.3
+            },
+            "duration": 0.5
+          },
+          {
+            "time": 0.5,
+            "action": "右转头",
+            "params": {
+              "headTurn": -0.3
+            },
+            "duration": 0.5
+          },
+          {
+            "time": 1.0,
+            "action": "点头",
+            "params": {
+              "headNod": 0.2
+            },
+            "duration": 0.5
+          },
+          {
+            "time": 1.5,
+            "action": "摇头",
+            "params": {
+              "headNod": -0.1
+            },
+            "duration": 0.5
+          },
+          {
+            "time": 2.0,
+            "action": "左转头",
+            "params": {
+              "headTurn": 0.3
+            },
+            "duration": 0.5
+          },
+          {
+            "time": 2.5,
+            "action": "右转头",
+            "params": {
+              "headTurn": -0.3
+            },
+            "duration": 0.5
+          },
+          {
+            "time": 3.0,
+            "action": "点头",
+            "params": {
+              "headNod": 0.2
+            },
+            "duration": 0.5
+          },
+          {
+            "time": 3.5,
+            "action": "摇头",
+            "params": {
+              "headNod": -0.1
+            },
+            "duration": 0.5
+          }
+        ],
+        "emotionTrack": {
+          "overlay": "neutral",
+          "fadeIn": 0.2
+        }
+      }
+    }
+  ],
+  "场景触发规则": [
+    {
+      "condition": "time >= 21:00",
+      "emotion": "melancholy",
+      "priority": 1,
+      "description": "夜深偏向 sad 底色"
+    },
+    {
+      "condition": "idle > 300s",
+      "emotion": "lonely",
+      "intensity": 0.5,
+      "priority": 2,
+      "description": "长时间无互动触发孤寂"
+    },
+    {
+      "condition": "keywords_contains '诗'",
+      "emotion": "proud",
+      "intensity": 0.4,
+      "priority": 3,
+      "description": "提到诗歌触发暗喜"
+    },
+    {
+      "condition": "keywords_contains '宝玉'",
+      "emotion": "happy",
+      "intensity": 0.4,
+      "priority": 3,
+      "description": "提到宝玉有微妙反应"
+    },
+    {
+      "condition": "new_message && sentiment_negative",
+      "emotion": "hurt",
+      "intensity": 0.5,
+      "priority": 2,
+      "description": "负面消息触发心伤底色"
+    }
+  ],
+  "voiceProfile": {
+    "style": "婉约、偏慢、略带鼻音",
+    "preferredVoice": "zh-CN-XiaoxiaoNeural",
+    "emotionToProsody": {
+      "sad": {
+        "rate": "-15%",
+        "pitch": "low"
+      },
+      "annoyed": {
+        "rate": "+5%",
+        "pitch": "x-high"
+      },
+      "happy": {
+        "rate": "+8%",
+        "pitch": "medium"
+      },
+      "surprised": {
+        "rate": "+15%",
+        "pitch": "high"
+      },
+      "melancholy": {
+        "rate": "-10%",
+        "pitch": "low"
+      }
+    }
+  }
+}

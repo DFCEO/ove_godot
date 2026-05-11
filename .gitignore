@@ -1,0 +1,26 @@
+﻿# Godot
+.godot/imported/
+.godot/editor/
+.godot/uid_cache.bin
+.godot/global_script_class_cache.cfg
+.godot/shader_cache/
+*.translation
+
+# Large binaries
+Godot_v4.4-stable_win64.exe
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+
+# Backups
+*.bak
+backup_*/
+
+# OS
+.DS_Store
+Thumbs.db
