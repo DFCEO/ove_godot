@@ -724,10 +724,11 @@ func do_action(action_name: String, auto: bool = false):
 		"hug":      {"arm_l_rz":  PI/2, "arm_r_rz": -PI/2},  # 环抱
 		"right_side":  {"arm_r_rz":  PI/2},    # 右臂右摆
 		"left_side":   {"arm_l_rz": -PI/2},    # 左臂左摆
-		# --- 头部 ---
-		"nod":        {"head_nod": 0.25},
-		"shake_head": {"head_turn": 0.35},
-		"tilt_head":  {"head_tilt": 0.25},
+		# --- 头部 (摇头=Y轴±90° / 摆头=Z轴±45° / 点头抬头=X轴±45°) ---
+		"nod":        {"head_nod": 0.785},
+		"lookup":     {"head_nod": -0.785},
+		"shake_head": {"_sequence": [{"head_turn": -1.57}, {"head_turn": 0.0}, {"head_turn": 1.57}, {"head_turn": 0.0}]},
+		"tilt_head":  {"head_tilt": 0.785},
 		# --- 身体 ---
 		"bounce": {"bounce": 0.4},
 	}
@@ -736,6 +737,22 @@ func do_action(action_name: String, auto: bool = false):
 	
 	_idle_busy = true
 	var a: Dictionary = ACTIONS[action_name]
+	
+	# 序列动作（如 shake_head）
+	if a.has("_sequence"):
+		var seq: Array = a["_sequence"]
+		for step in seq:
+			var sd: Dictionary = step
+			for sk: String in sd:
+				emotion_params[sk] = sd[sk]
+			await get_tree().create_timer(0.5).timeout
+		# 恢复默认
+		for sk: String in seq[0]:
+			emotion_params[sk] = 0.0
+		set_emotion(current_emotion, emotion_intensity)
+		_idle_busy = false
+		print("[Action] ", action_name)
+		return
 	
 	# 保存当前原始骨骼值（用于恢复）
 	var saved := {}
