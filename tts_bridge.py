@@ -1,5 +1,15 @@
 """TTS Bridge — Godot -> GPT-SoVITS, with sentence splitting, sequential playback, and emotion-driven speed"""
 
+import sys, os
+# Detach from stdin to allow running in background/Hidden windows
+if os.name == 'nt':
+    try:
+        import msvcrt
+        msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
+    except Exception:
+        pass
+    sys.stdin = open(os.devnull, 'r')
+
 import http.server
 import json
 import threading
