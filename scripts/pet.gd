@@ -4,7 +4,7 @@ extends Node3D
 @onready var camera: Camera3D = $Camera3D
 @onready var model_root: Node3D = null
 @onready var anim_player: AnimationPlayer = null
-@onready var emotion_light: OmniLight3D = $OmniLight3D
+
 
 # 角色数据
 var persona_data: Dictionary = {}
@@ -363,13 +363,14 @@ func _process(delta: float):
 	
 	# 眼睛由 BoneAttachment3D 自动跟随骨骼
 	
-	# 整体倾斜（加基础旋转偏移）
-	model_root.rotation.x = _base_rot_x + emotion_params.body_lean_x + sin(Time.get_ticks_msec() * 0.0012) * max(emotion_params.body_bob, 0.003)
-	model_root.rotation.z = _base_rot_z + emotion_params.body_lean_z
+	# 整体旋转（仅基础补偿，不随情绪动）
+	model_root.rotation.x = _base_rot_x
+	model_root.rotation.z = _base_rot_z
 	
 # 弹跳
 	if emotion_params.bounce > 0.01:
 		model_root.position.y = -0.8 + emotion_params.bounce * 0.15
+	
 	
 	# 闲置微动
 	if not _idle_busy:
@@ -510,12 +511,29 @@ func _lens_update(_delta: float):
 	if not _blink_visible:
 		blink_mul = 0.1
 	
-	# ---- 应用亮度 ----
-	var energy := brightness
+	# ---- 应用颜色 + 亮度 ----
+	var eye_color := Color(0.3, 0.6, 1.0)
+	var energy := brightness * 2.0
+	if persona_data.has("emotions") and persona_data.emotions.has(current_emotion):
+		var params2: Dictionary = persona_data.emotions[current_emotion].get("params", {})
+		if params2.has("glowColor"):
+			var color_hex: int = params2["glowColor"]
+			eye_color = Color(
+				float(color_hex >> 16 & 0xFF) / 255.0,
+				float(color_hex >> 8 & 0xFF) / 255.0,
+				float(color_hex & 0xFF) / 255.0
+			)
+			energy = params2.get("glowIntensity", 1.0) * 3.0
 	var mat_l := _lens_l.get_surface_override_material(0)
 	var mat_r := _lens_r.get_surface_override_material(0)
-	if mat_l: mat_l.emission_energy_multiplier = energy
-	if mat_r: mat_r.emission_energy_multiplier = energy
+	if mat_l:
+		mat_l.albedo_color = eye_color
+		mat_l.emission = eye_color * 0.5
+		mat_l.emission_energy_multiplier = energy
+	if mat_r:
+		mat_r.albedo_color = eye_color
+		mat_r.emission = eye_color * 0.5
+		mat_r.emission_energy_multiplier = energy
 	
 	# ---- 应用大小 ----
 	const BASE_RADIUS := 0.0010
@@ -713,15 +731,13 @@ func do_action(action_name: String, auto: bool = false):
 	#   Z轴: 左-Z=左/+Z=右  右+Z=右/-Z=左
 	const ACTIONS := {
 		# --- 单臂前伸（指向）---
-		"point_right": {"arm_r_rx": -PI/2},    # 右臂前伸 90°
+		"point_right": {"arm_r_rx":  PI/2},    # 右臂前伸 90°
 		"point_left":  {"arm_l_rx":  PI/2},    # 左臂前伸 90°
 		# --- 双臂动作 ---
-		"both_forward":  {"arm_l_rx":  PI/2, "arm_r_rx": -PI/2},  # 双臂前伸
-		"both_back":     {"arm_l_rx": -PI/2, "arm_r_rx":  PI/2},  # 双臂后摆
-		"walk_pose":     {"arm_l_rx":  0.5,  "arm_r_rx":  0.5},   # 走路交替
+		"both_forward":  {"arm_l_rx":  PI/2, "arm_r_rx":  PI/2},  # 双臂前伸
+		"both_back":     {"arm_l_rx": -PI/2, "arm_r_rx": -PI/2},  # 双臂后摆
 		# --- 侧向动作 ---
 		"spread":   {"arm_l_rz": -PI/2, "arm_r_rz":  PI/2},  # 张开双臂
-		"hug":      {"arm_l_rz":  PI/2, "arm_r_rz": -PI/2},  # 环抱
 		"right_side":  {"arm_r_rz":  PI/2},    # 右臂右摆
 		"left_side":   {"arm_l_rz": -PI/2},    # 左臂左摆
 		# --- 头部 (摇头=Y轴±90° / 摆头=Z轴±45° / 点头抬头=X轴±45°) ---
@@ -893,21 +909,12 @@ func set_emotion(emotion_name: String, intensity: float = 1.0, source: String = 
 	_emotion_age = 0.0
 	_emotion_original_intensity = emotion_intensity
 	
-	var preset: Dictionary = emotions[emotion_name].get("params", {})
-	for persona_key: String in preset:
-		var godot_key := _camel_to_snake(persona_key)
-		if godot_key in target_params:
-			target_params[godot_key] = preset[persona_key] * emotion_intensity
-	
-	# ---- 情绪 → 灯光颜色 ----
-	if emotion_light and preset.has("glowColor"):
-		var color_hex: int = preset["glowColor"]
-		emotion_light.light_color = Color(
-			float(color_hex >> 16 & 0xFF) / 255.0,
-			float(color_hex >> 8 & 0xFF) / 255.0,
-			float(color_hex & 0xFF) / 255.0
-		)
-		emotion_light.light_energy = preset.get("glowIntensity", 0.25) * 2.0
+	# 情绪不再驱动身体/头部/手臂骨骼，只影响眼睛颜色（见 _lens_update）
+	# var preset: Dictionary = emotions[emotion_name].get("params", {})
+	# for persona_key: String in preset:
+	# 	var godot_key := _camel_to_snake(persona_key)
+	# 	if godot_key in target_params:
+	# 		target_params[godot_key] = preset[persona_key] * emotion_intensity
 	
 	print("[Emotion] ", emotion_name, " @ ", intensity, " source=", source)
 	

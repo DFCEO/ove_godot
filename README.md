@@ -36,7 +36,7 @@
 ```
 
 - **防反馈循环**：外源推送的情绪优先，场景/关键词不覆盖；`_last_pushed_emotion` 防止关键词重复触发
-- **灯光联动**：切换情绪时自动改 OmniLight 颜色和亮度（从 persona.json 读取）
+- **眼睛颜色联动**：切换情绪时自动改眼睛颜色和亮度（从 persona.json glowColor 读取）
 - **眨眼**：随情绪改变频率（blinkFreq），缩放眼球 Y 轴模拟
 
 ## 项目结构
@@ -56,25 +56,24 @@ ove-godot/
 ├── tts_bridge.py          # TTS 桥接微服务（端口 18777）
 ├── test_all.py            # 自动化测试脚本
 ├── TEST_PLAN.md           # 详细测试计划
-├── run.bat                # 一键启动
+├── start_all.bat          # 一键启动（GSV + TTS 桥 + Godot）
+├── stop.ps1               # 停止脚本
+├── ROADMAP.md             # 开发路线图
 └── README.md
 ```
 
 ## 启动方式
 
 ```bash
-# 方式 A：一键启动（run.bat 自动开 TTS 桥 + Godot）
-run.bat
+# 方式 A：一键启动（start_all.bat 自动开 GSV + TTS 桥 + Godot）
+start_all.bat
 
 # 方式 B：手动启动
 python tts_bridge.py              # 1. 先开 TTS 桥
-# 2. 用 Godot 打开项目运行
-
-# 方式 C：Godot 自启动 TTS 桥（Godot 4.4+）
-# 直接打开项目，Godot 会自动 spawn tts_bridge.py 并播启动问候
+# 2. 用 Godot 编辑器打开项目，按 F5 运行
 ```
 
-启动后会听到林黛玉风格的问候语（根据时段：凌晨/早晨/下午/晚上）
+启动后会听到林黛玉风格的问候语（根据时段）。渲染驱动用 OpenGL3（透明窗口兼容性最好）。
 
 ## HTTP API
 
@@ -91,7 +90,20 @@ python tts_bridge.py              # 1. 先开 TTS 桥
 
 ## 动作列表
 
-`raise_right` `raise_left` `both_up` `wave_right` `wave_left` `nod` `shake_head` `tilt_head` `twist` `bounce`
+| 分类 | 指令 | 效果 |
+|------|------|------|
+| 手臂 | `point_right` | 右臂前伸 |
+| 手臂 | `point_left` | 左臂前伸 |
+| 手臂 | `both_forward` | 双臂前伸 |
+| 手臂 | `both_back` | 双臂后摆 |
+| 手臂 | `spread` | 双臂展开 |
+| 手臂 | `right_side` | 右臂右摆 |
+| 手臂 | `left_side` | 左臂左摆 |
+| 头部 | `nod` | 点头 |
+| 头部 | `lookup` | 抬头 |
+| 头部 | `shake_head` | 摇头 |
+| 头部 | `tilt_head` | 歪头 |
+| 身体 | `bounce` | 弹跳 |
 
 ## 场景序列
 
@@ -172,7 +184,7 @@ python ove_integrate.py health
 | 窗口拖拽 | ✅ |
 | 情绪衰减（自然回归 neutral） | ✅ |
 | 场景触发规则（时间/闲置） | ✅ |
-| 情绪 → 灯光颜色联动 | ✅ |
+| 情绪 → 眼睛颜色联动 | ✅ |
 | 情绪 → TTS 韵律联动 | ✅ |
 | 场景动作卡片序列 | ✅ |
 | 情绪切换 → 自动语音 | ✅ |
@@ -182,7 +194,8 @@ python ove_integrate.py health
 ## 已知问题
 
 - TTS 依赖网络（edge-tts 在线合成），断网时优雅降级（无声音不崩溃）
-- 模型无面部骨骼，表情变化仅通过眼睛亮度和大小模拟
+- 模型无面部骨骼，表情通过眼睛颜色/亮度/大小表达（不驱动身体骨骼）
 - 眼球追踪（视线跟随鼠标/消息来源）尚未实现
-- 头眼联动（head bone → eye bone 级联）已通过 BoneAttachment3D 解决
+- 头眼联动已通过 BoneAttachment3D 解决
+- 透明窗口在某些 GPU 上需要关闭 per-pixel transparency
 - 未做 Linux/macOS 兼容测试
