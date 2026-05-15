@@ -352,14 +352,17 @@ func _speak_greeting():
 
 # ---- 自然语言 → 动作 ----
 const ACTION_TRIGGERS := {
-	"举起右手": "raise_right", "举右手": "raise_right",
-	"举起左手": "raise_left", "举左手": "raise_left",
-	"挥手": "wave_right", "招手": "wave_right",
-	"举手": "both_up", "双手": "both_up",
+	"伸手": "point_right", "右臂": "point_right",
+	"左手": "point_left", "左臂": "point_left",
+	"双手前伸": "both_forward", "前伸": "both_forward",
+	"双手后摆": "both_back", "后摆": "both_back",
+	"展开": "spread", "张开": "spread",
+	"右摆": "right_side", "右手": "point_right",
+	"左摆": "left_side",
 	"点头": "nod", "嗯": "nod",
+	"抬头": "lookup",
 	"摇头": "shake_head",
 	"歪头": "tilt_head",
-	"扭腰": "twist",
 	"跳": "bounce", "弹跳": "bounce", "蹦": "bounce",
 }
 

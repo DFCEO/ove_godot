@@ -57,7 +57,7 @@ def set_emotion(emotion: str, intensity: float = 0.6) -> bool:
 
 def do_action(action: str) -> bool:
     """触发 Ove 动作。
-    action: raise_right|raise_left|both_up|wave_right|wave_left|nod|shake_head|tilt_head|twist|bounce
+    action: point_right|point_left|both_forward|both_back|spread|right_side|left_side|nod|lookup|shake_head|tilt_head|bounce
     """
     r = _post("/action", {"action": action})
     return r is not None

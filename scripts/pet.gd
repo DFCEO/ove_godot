@@ -335,12 +335,10 @@ func _process(delta: float):
 	_apply_bone(sk, head_bone, emotion_params.head_turn, emotion_params.head_nod, emotion_params.head_tilt)
 	# 手臂动画
 	#   X 轴 = 前后摆动，范围 ±180°
-	#     左臂: +X=向前, -X=向后
-	#     右臂: +X=向后, -X=向前
-	#     arm_swing 同号即可产生走路交替（左前右后）
+	#     左臂/右臂: +X=向前, -X=向后
 	#   Z 轴 = 侧向摆动，范围 ±135°
-	#     右臂: +Z=向右摆, -Z=向左摆（过身体）
-	#     左臂: -Z=向左摆, +Z=向右摆（过身体）
+	#     左臂: -Z=向左, +Z=向右
+	#     右臂: +Z=向右, -Z=向左
 	#   Y 轴 = 扭转（不可见）
 	const ARM_X_MAX := PI      # 180°
 	const ARM_Z_MAX := 2.356   # 135°
@@ -443,14 +441,14 @@ func _decay_emotion(delta: float):
 		var decayed := lerpf(_emotion_original_intensity, NEUTRAL_INTENSITY, t)
 		emotion_intensity = decayed
 		
-		# 同步缩放动画参数
-		var emotions: Dictionary = persona_data.get("emotions", {})
-		if emotions.has(current_emotion):
-			var preset: Dictionary = emotions[current_emotion].get("params", {})
-			for persona_key: String in preset:
-				var godot_key := _camel_to_snake(persona_key)
-				if godot_key in target_params:
-					target_params[godot_key] = preset[persona_key] * emotion_intensity
+		# 情绪不再驱动身体骨骼（衰减时也一样）
+		# var emotions: Dictionary = persona_data.get("emotions", {})
+		# if emotions.has(current_emotion):
+		# 	var preset: Dictionary = emotions[current_emotion].get("params", {})
+		# 	for persona_key: String in preset:
+		# 		var godot_key := _camel_to_snake(persona_key)
+		# 		if godot_key in target_params:
+		# 			target_params[godot_key] = preset[persona_key] * emotion_intensity
 		
 		if t >= 1.0:
 			# 衰减完毕，回归 neutral
@@ -490,13 +488,24 @@ func _lens_update(_delta: float):
 	if _lens_l == null or _lens_r == null:
 		return
 	
-	# 从 persona 读取当前情绪眼部参数
+	# 从 persona 读取当前情绪眼部参数（一次查询）
 	var brightness := 1.0
 	var eye_size := 1.0
+	var eye_color := Color(0.3, 0.6, 1.0)
+	var energy := 2.0
 	if persona_data.has("emotions") and persona_data.emotions.has(current_emotion):
 		var params: Dictionary = persona_data.emotions[current_emotion].get("params", {})
 		brightness = params.get("eyeBright", 1.0)
 		eye_size = params.get("eyeSize", 1.0)
+		energy = brightness * 2.0
+		if params.has("glowColor"):
+			var color_hex: int = params["glowColor"]
+			eye_color = Color(
+				float(color_hex >> 16 & 0xFF) / 255.0,
+				float(color_hex >> 8 & 0xFF) / 255.0,
+				float(color_hex & 0xFF) / 255.0
+			)
+			energy = params.get("glowIntensity", 1.0) * 3.0
 	
 	# ---- 眨眼 ----
 	_blink_timer += _delta * 1000.0
@@ -511,19 +520,7 @@ func _lens_update(_delta: float):
 	if not _blink_visible:
 		blink_mul = 0.1
 	
-	# ---- 应用颜色 + 亮度 ----
-	var eye_color := Color(0.3, 0.6, 1.0)
-	var energy := brightness * 2.0
-	if persona_data.has("emotions") and persona_data.emotions.has(current_emotion):
-		var params2: Dictionary = persona_data.emotions[current_emotion].get("params", {})
-		if params2.has("glowColor"):
-			var color_hex: int = params2["glowColor"]
-			eye_color = Color(
-				float(color_hex >> 16 & 0xFF) / 255.0,
-				float(color_hex >> 8 & 0xFF) / 255.0,
-				float(color_hex & 0xFF) / 255.0
-			)
-			energy = params2.get("glowIntensity", 1.0) * 3.0
+	# ---- 应用材质 ----
 	var mat_l := _lens_l.get_surface_override_material(0)
 	var mat_r := _lens_r.get_surface_override_material(0)
 	if mat_l:
@@ -786,6 +783,9 @@ func do_action(action_name: String, auto: bool = false):
 	# 恢复
 	for k: String in saved:
 		emotion_params[k] = saved[k]
+	# 动作结束后重置模型位置（bounce 会改变 position.y）
+	if model_root:
+		model_root.position.y = 1.0
 	set_emotion(current_emotion, emotion_intensity)
 	_idle_busy = false
 	print("[Action] ", action_name)
