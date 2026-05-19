@@ -418,13 +418,20 @@ _last_voice_id = None
 _pending_replies = queue.Queue()
 
 def on_voice_text(text: str):
-    """收到语音文本 → 存入队列，由 OpenClaw 心跳处理"""
+    """收到语音文本 → 存入队列 + 写信号文件通知 cron 立即处理"""
     global _last_voice_id
     vid = f"{text}_{time.time():.0f}"
     if vid == _last_voice_id:
         return
     _last_voice_id = vid
-    log(f"→ OpenClaw will respond")
+    # 写信号文件，cron 轮询检测
+    try:
+        sig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice_ready.signal")
+        with open(sig_path, "w") as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass
+    log(f"→ Voice queued, signal sent")
 
 
 # ═══════════════════════════ 心跳 ═══════════════════════════
