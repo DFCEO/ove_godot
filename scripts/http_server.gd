@@ -517,11 +517,12 @@ func _ws_handle_message(raw: String):
 
 
 func _ws_on_composite(data: Dictionary):
-	"""复合指令：说话 + 情绪 + 动作 一次完成"""
+	"""复合指令：说话 + 情绪 + 动作 + 屏幕文字 一次完成"""
 	var text: String = data.get("text", "")
 	var emotion: String = data.get("emotion", "")
 	var action: String = data.get("action", "")
 	var sender: String = data.get("sender", "Ove")
+	var screen_text: String = data.get("screen_text", "")
 	
 	# 1. 设情绪（先设，语音用对应韵律）
 	if not emotion.is_empty():
@@ -534,6 +535,11 @@ func _ws_on_composite(data: Dictionary):
 	# 3. 说话（气泡 + TTS）
 	if not text.is_empty():
 		_on_message(sender, text)
+	
+	# 4. 屏幕面板（长文本/复杂信息）
+	if not screen_text.is_empty():
+		if _pet and _pet.has_method("show_screen_message"):
+			_pet.show_screen_message(screen_text)
 
 
 func _ws_on_raw(data: Dictionary):

@@ -118,22 +118,9 @@ def _bridge_get(path: str) -> dict | None:
 
 
 def push_composite(text: str, emotion: str = None, action: str = None,
-                   intensity: float = 0.7, sender: str = "Ove") -> bool:
-    """魂身合一核心 API：一次推送说话+情绪+动作。
-
-    OpenClaw 每次回复时调用此函数，机器人会说对应文本、
-    切换到对应情绪、执行对应动作——真正做到"我就是机器人"。
-
-    Args:
-        text: 显示的文本（气泡 + TTS 语音）
-        emotion: 情绪名（neutral/melancholy/sad/hurt/annoyed/angry/
-                 happy/proud/curious/surprised/anxious/lonely/grateful/
-                 resigned/defiant），None 则不改变情绪
-        action: 动作名（nod/shake_head/tilt_head/bounce/point_right/...），
-                None 则不执行动作
-        intensity: 情绪强度 0.0-1.0
-        sender: 发送者名
-    """
+                   intensity: float = 0.7, sender: str = "Ove",
+                   screen_text: str = None) -> bool:
+    """魂身合一核心 API：一次推送说话+情绪+动作+屏幕文字。"""
     msg = {
         "type": "composite",
         "text": text,
@@ -144,6 +131,8 @@ def push_composite(text: str, emotion: str = None, action: str = None,
         msg["emotion"] = emotion
     if action:
         msg["action"] = action
+    if screen_text:
+        msg["screen_text"] = screen_text
 
     r = _bridge_post("/push", msg)
     return r is not None and r.get("status") == "ok"
@@ -238,6 +227,7 @@ def main():
     comp.add_argument("--emotion", "-e", default=None)
     comp.add_argument("--action", "-a", default=None)
     comp.add_argument("--intensity", "-i", type=float, default=0.7)
+    comp.add_argument("--screen-text", "-s", default=None)
 
     emo = sub.add_parser("emotion", help="设置情绪 (Godot 直接)")
     emo.add_argument("emotion")
@@ -268,7 +258,7 @@ def main():
         ok = push_to_ove(args.sender, args.text)
         print(json.dumps({"ok": ok}))
     elif args.cmd == "composite":
-        ok = push_composite(args.text, args.emotion, args.action, args.intensity)
+        ok = push_composite(args.text, args.emotion, args.action, args.intensity, screen_text=args.screen_text)
         print(json.dumps({"ok": ok}))
     elif args.cmd == "emotion":
         ok = set_emotion(args.emotion, args.intensity)

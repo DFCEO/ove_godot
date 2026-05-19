@@ -61,6 +61,11 @@ var _bubble_layer: CanvasLayer = null
 var _bubble_panel: Panel = null
 var _bubble_label: Label = null
 var _bubble_timer: float = 0.0
+# 信息屏幕面板（长文本显示）
+var _screen_layer: CanvasLayer = null
+var _screen_panel: Panel = null
+var _screen_label: RichTextLabel = null
+var _screen_timer: float = 0.0
 # 眼睛
 var _eye_l: Node3D = null
 var _eye_r: Node3D = null
@@ -137,6 +142,7 @@ func _ready():
 	
 	# 创建气泡消息 UI
 	_create_bubble()
+	_create_screen_panel()
 	
 	_last_interaction_time = Time.get_ticks_msec() / 1000.0
 	
@@ -382,6 +388,11 @@ func _process(delta: float):
 		_bubble_timer -= delta
 		if _bubble_timer <= 0:
 			_bubble_panel.visible = false
+	# 屏幕面板自动收起
+	if _screen_panel and _screen_panel.visible and _screen_timer > 0:
+		_screen_timer -= delta
+		if _screen_timer <= 0:
+			_screen_panel.visible = false
 
 
 func _find_skeleton(node: Node) -> Skeleton3D:
@@ -890,6 +901,50 @@ func _create_bubble():
 	_bubble_panel.add_child(_bubble_label)
 	
 	_bubble_layer.add_child(_bubble_panel)
+
+
+func _create_screen_panel():
+	_screen_layer = CanvasLayer.new()
+	add_child(_screen_layer)
+	
+	_screen_panel = Panel.new()
+	_screen_panel.position = Vector2(40, 80)
+	_screen_panel.size = Vector2(360, 200)
+	_screen_panel.visible = false
+	
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.12, 0.18, 0.93)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.3, 0.6, 1.0, 0.8)
+	style.corner_radius_top_left = 12
+	style.corner_radius_top_right = 12
+	style.corner_radius_bottom_left = 12
+	style.corner_radius_bottom_right = 12
+	_screen_panel.add_theme_stylebox_override("panel", style)
+	
+	_screen_label = RichTextLabel.new()
+	_screen_label.position = Vector2(14, 10)
+	_screen_label.size = Vector2(332, 180)
+	_screen_label.add_theme_color_override("default_color", Color(0.85, 0.9, 1.0, 1))
+	_screen_label.add_theme_font_size_override("normal_font_size", 13)
+	_screen_label.bbcode_enabled = true
+	_screen_label.fit_content = true
+	_screen_label.scroll_active = false
+	_screen_panel.add_child(_screen_label)
+	
+	_screen_layer.add_child(_screen_panel)
+
+
+func show_screen_message(text: String, duration: float = 15.0):
+	"""在机器人下方显示信息面板，支持多行文字"""
+	if _screen_label:
+		_screen_label.text = text
+		_screen_panel.visible = true
+		_screen_timer = duration
+	print("[Screen] ", text.left(80))
 
 
 func set_emotion(emotion_name: String, intensity: float = 1.0, source: String = "external"):
