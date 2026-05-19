@@ -27,6 +27,7 @@ voice_processed.txt
 *.wav
 !01.wav
 conversation_context.json
+voice_ready.signal
 
 # OS
 .DS_Store
