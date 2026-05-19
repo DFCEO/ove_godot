@@ -26,6 +26,7 @@ voice_inbox.txt
 voice_processed.txt
 *.wav
 !01.wav
+conversation_context.json
 
 # OS
 .DS_Store

@@ -392,15 +392,6 @@ async def _http_push(body: str) -> str:
     except Exception as e:
         return json.dumps({"status": "error", "reason": str(e)})
 
-async def _http_add_voice_send(text: str):
-    """仅本模块内部调用：语音文本→WS推送 '嗯？' ack"""
-    if _godot_ws is None:
-        return
-    try:
-        await _godot_ws.send(json.dumps({"type": "speak", "text": "嗯？", "sender": ""}, ensure_ascii=False))
-    except Exception:
-        pass
-
 def _http_add_voice(body: str) -> str:
     try:
         msg = json.loads(body)
@@ -414,9 +405,7 @@ def _http_add_voice(body: str) -> str:
     if len(_voice_queue) > MAX_VOICE:
         _voice_queue.pop(0)
 
-    # 仅原始 STT 语音推 ack 到 Godot
-    if msg.get("source") == "voice":
-        asyncio.ensure_future(_http_add_voice_send(text))
+    # 语音不再即时 ack（改为 Heartbeat AI 生成回复后 composite 推送）
 
     return json.dumps({"status": "ok"})
 
