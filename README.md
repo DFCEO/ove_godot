@@ -12,6 +12,23 @@
 | 音频 | pygame | 2.6.1 | MP3 播放 |
 | 集成 | Python CLI | 3.10+ | OpenClaw 工具调用的 HTTP 客户端 |
 
+## 魂身合一架构 (v2)
+
+```
+┌─────────────┐     HTTP (18779)     ┌──────────────┐     WebSocket (18778)     ┌──────────────┐
+│  OpenClaw    │ ──────────────────> │  ove_bridge   │ <─────────────────────> │  Godot 宠物   │
+│  (大脑/Ove)  │ <────────────────── │  (中继/缓存)   │                         │  (身体/表现)  │
+└─────────────┘     GET /state        └──────────────┘                         └──────────────┘
+                          ↑                                                          │
+                          │                             HTTP (18776，兼容旧接口)      │
+                          └──────────────────────────────────────────────────────────┘
+```
+
+**核心能力：**
+- OpenClaw 每次回复 → `push_composite(text, emotion, action)` → 机器人同步说话+表情+动作
+- 机器人每 2 秒上报状态（情绪、闲置时长）→ bridge 缓存 → OpenClaw 随时查询
+- Godot 事件（闲置预警、被戳、拖拽）→ 事件队列 → OpenClaw 拉取后决策
+
 ## 情绪系统架构
 
 ```
@@ -47,16 +64,17 @@ ove-godot/
 ├── main.tscn              # 主场景（Camera + Lights + HTTP Server）
 ├── scripts/
 │   ├── pet.gd             # 核心：3D 模型加载、骨骼动画、情绪系统、气泡消息
-│   └── http_server.gd     # HTTP API 服务器（端口 18776）
+│   └── http_server.gd     # HTTP API + WebSocket 客户端（端口 18776 + WS 18778）
 ├── models/
 │   ├── eve_ah.glb         # 3D 模型（~1.9MB）
 │   └── eve_ah_Image_*.png # 模型纹理
 ├── persona.json           # 角色配置：15 种情绪参数 + 场景触发规则 + 动作卡片
-├── ove_integrate.py       # OpenClaw 集成层（Python HTTP 客户端）
-├── tts_bridge.py          # TTS 桥接微服务（端口 18777）
+├── ove_bridge.py          # 🆕 WebSocket 中继（端口 18778/18779，魂身合一核心）
+├── ove_integrate.py       # OpenClaw 集成层 v2（含 push_composite / get_robot_state）
+├── tts_bridge.py          # TTS 桥接微服务（端口 18777，→ GSV Server 9881）
 ├── test_all.py            # 自动化测试脚本
 ├── TEST_PLAN.md           # 详细测试计划
-├── start_all.bat          # 一键启动（GSV + TTS 桥 + Godot）
+├── start_all.bat          # 一键启动（GSV + TTS 桥 + Bridge + Godot）
 ├── stop.ps1               # 停止脚本
 ├── ROADMAP.md             # 开发路线图
 └── README.md
@@ -77,7 +95,7 @@ python tts_bridge.py              # 1. 先开 TTS 桥
 
 ## HTTP API
 
-端口：`127.0.0.1:18776`
+### Godot 直接 (端口 18776)
 
 | 方法 | 路径 | 请求体 | 说明 |
 |------|------|--------|------|
@@ -87,6 +105,15 @@ python tts_bridge.py              # 1. 先开 TTS 桥
 | `POST` | `/action` | `{"action":"wave_right"}` | 触发动作 |
 | `POST` | `/tweak` | `{"model":{"y":-0.5},"camera":{"z":2},"targets":{...}}` | 实时调参 |
 | `POST` | `/scene` | `{"scene":"葬花"}` | 播放场景动作序列 |
+
+### Bridge 中继 (端口 18779) — 魂身合一
+
+| 方法 | 路径 | 请求体 | 说明 |
+|------|------|--------|------|
+| `GET` | `/health` | — | Bridge 健康 + Godot 连接状态 |
+| `GET` | `/state` | — | 机器人当前状态（情绪/闲置/运行时间） |
+| `GET` | `/events` | — | 获取并清空事件队列 |
+| `POST` | `/push` | `{"type":"composite","text":"...","emotion":"happy","action":"nod"}` | 复合指令推送 |
 
 ## 动作列表
 
@@ -145,26 +172,50 @@ python tts_bridge.py              # 1. 先开 TTS 桥
 
 ## OpenClaw 集成
 
+### 魂身合一模式（推荐）
+
+```python
+from ove_integrate import push_composite, get_robot_state, get_events, is_robot_connected
+
+# 一次推送：说话 + 情绪 + 动作
+push_composite(
+    text="长官，今儿来得早。",
+    emotion="happy",
+    action="nod"
+)
+
+# 查询机器人状态
+state = get_robot_state()
+print(state["current_emotion"], state["idle_seconds"])
+
+# 获取事件（闲置预警等）
+for event in get_events():
+    if event["event"] == "idle_alert":
+        push_composite("哼，没人理我……", emotion="lonely")
+```
+
+### 直接模式（兼容旧接口）
+
 ```python
 from ove_integrate import push_to_ove, set_emotion, do_action
 
-# 发消息
 push_to_ove("Ove", "你好长官")
-
-# 设情绪
 set_emotion("happy", 0.7)
-
-# 做动作
 do_action("wave_right")
 ```
 
 命令行：
 
 ```bash
+# 魂身合一
+python ove_integrate.py composite "你好长官" --emotion happy --action nod
+python ove_integrate.py state
+python ove_integrate.py events
+
+# 直接模式
 python ove_integrate.py message "Ove" "你好"
 python ove_integrate.py emotion happy --intensity 0.8
 python ove_integrate.py action bounce
-python ove_integrate.py health
 ```
 
 ## 功能状态

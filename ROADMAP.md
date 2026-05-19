@@ -12,6 +12,13 @@
 
 ## 待办
 
+### 0. 魂身合一 ✅ (2026-05-18)
+- [x] WebSocket 双向通信 (ove_bridge.py)
+- [x] 机器人状态上报 (每 2s)
+- [x] composite 复合指令（说话+情绪+动作一次完成）
+- [x] OpenClaw 集成层升级 (push_composite / get_robot_state / get_events)
+- [x] 事件队列（idle_alert / long_idle / interacted）
+
 ### 1. 面部表情增强
 - [ ] 眼球追踪：视线跟随鼠标/消息来源方向
 - [ ] 表情形状变化（更丰富的眼部动画：眯眼/瞪眼/半月眼）

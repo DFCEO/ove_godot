@@ -918,8 +918,4 @@ func set_emotion(emotion_name: String, intensity: float = 1.0, source: String = 
 	
 	print("[Emotion] ", emotion_name, " @ ", intensity, " source=", source)
 	
-	# ---- 情绪切换 → 自动语音（衰减中不触发） ----
-	if source != "_decay":
-		var http_svr := get_node_or_null("HTTPServer")
-		if http_svr and http_svr.has_method("speak_emotion_phrase"):
-			http_svr.speak_emotion_phrase(emotion_name)
+	# ---- 情绪切换 → 自动语音（已解耦，不自动说话） ----

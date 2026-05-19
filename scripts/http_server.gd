@@ -1,5 +1,6 @@
 extends Node
-## HTTP API 服务器 — 接收 OpenClaw 消息
+## HTTP API + WebSocket 客户端 — 魂身合一
+## HTTP 服务器 (18776) + WS 连接 ove_bridge (18778)
 
 @export var port := 18776
 @export var bind_address := "127.0.0.1"
@@ -9,11 +10,23 @@ var _pet: Node = null
 var _running := false
 var _last_pushed_emotion := ""   # 防反馈循环：记录上次外源推送的情绪
 
+# ---- WebSocket 客户端 (→ ove_bridge) ----
+var _ws = null  # WebSocketPeer (untyped to avoid GDScript strict-mode issues)
+var _ws_url := "ws://127.0.0.1:18778"
+var _ws_connected := false
+var _ws_reconnect_timer := 0.0
+var _ws_state_timer := 0.0
+var _ws_startup_ts := 0.0
+const WS_RECONNECT_INTERVAL := 3.0
+const WS_STATE_INTERVAL := 2.0  # 每 2 秒上报状态
+
 
 func _ready():
 	# 查找 pet 节点
 	_pet = get_parent()
+	_ws_startup_ts = Time.get_ticks_msec() / 1000.0
 	_start_server()
+	_ws_connect()
 
 
 func _start_server():
@@ -29,14 +42,19 @@ func _start_server():
 	_start_tts_bridge()
 
 
-func _process(_delta: float):
+func _process(delta: float):
 	if not _running:
 		return
+	
+	# ---- HTTP 服务器轮询 ----
 	while _server.is_connection_available():
 		var conn := _server.take_connection()
 		if conn == null:
 			continue
 		_handle_connection(conn)
+	
+	# ---- WebSocket 客户端轮询 ----
+	_ws_poll(delta)
 
 
 func _handle_connection(stream: StreamPeerTCP):
@@ -176,6 +194,20 @@ func _handle_connection(stream: StreamPeerTCP):
 		else:
 			resp_body = '{"error":"pet not ready"}'
 	
+	elif method == "GET" and path == "/ws-status":
+		var ws_state := -1
+		if _ws:
+			ws_state = _ws.get_ready_state()
+		var d := {
+			"ws_obj": _ws != null,
+			"ws_state": ws_state,
+			"ws_connected": _ws_connected,
+			"ws_url": _ws_url,
+			"reconnect_timer": _ws_reconnect_timer,
+			"has_ws_class": ClassDB.class_exists("WebSocketPeer"),
+		}
+		resp_body = JSON.stringify(d)
+	
 	elif method == "POST" and path == "/force":
 		# 强制设置骨骼参数（绕过所有系统，直接控制）
 		if _pet:
@@ -225,10 +257,8 @@ func _parse_json(text: String) -> Variant:
 func _on_message(sender: String, text: String):
 	if _pet and _pet.has_method("mark_interaction"):
 		_pet.mark_interaction()
-	_infer_emotion(text)
-	_infer_scene(text)
-	_infer_action(text)
-	_speak(text)  # 消息本身正常语速说
+	# 关键词匹配已解耦，只说话不做情绪/动作推断
+	_speak(text)
 
 
 func _on_action(name: String):
@@ -254,24 +284,7 @@ func _on_progress(text: String):
 
 # ---- TTS + 韵律 ----
 
-# 情绪 → 随机台词（林黛玉风格）
-const EMOTION_PHRASES := {
-	"neutral": ["嗯。"],
-	"melancholy": ["花谢花飞花满天，红消香断有谁怜……", "一年三百六十日，风刀霜剑严相逼。", "花开易见落难寻，阶前闷杀葬花人。"],
-	"sad": ["泪眼问花花不语，乱红飞过秋千去……", "侬今葬花人笑痴，他年葬侬知是谁？"],
-	"hurt": ["你又来说这些话……", "我说了也无用……"],
-	"annoyed": ["哼，你又来了。", "谁理你。"],
-	"angry": ["你走！我不想看见你。"],
-	"happy": ["嗯……", "今日倒是难得的好日头。"],
-	"proud": ["一从陶令平章后，千古高风说到今。"],
-	"curious": ["咦？", "这是什么？"],
-	"surprised": ["啊……", "你说什么？"],
-	"anxious": ["急死了……", "怎么还不来……"],
-	"lonely": ["热闹是他们的，我什么也没有……"],
-	"grateful": ["多谢你……", "难为你想得到。"],
-	"resigned": ["罢了……一切随它去罢。"],
-	"defiant": ["质本洁来还洁去，强于污淖陷渠沟。"]
-}
+# 情绪自动台词已全部取消（解耦），只保留视觉表现
 
 
 func _get_prosody_for(emotion_name: String) -> Dictionary:
@@ -285,12 +298,9 @@ func _get_prosody_for(emotion_name: String) -> Dictionary:
 	return {"rate": "+0%"}
 
 
-func speak_emotion_phrase(emotion_name: String):
-	"""情绪切换时说一句对应台词（由 pet.gd 调用）"""
-	var phrases = EMOTION_PHRASES.get(emotion_name, ["嗯。"]) as Array
-	var text: String = phrases[randi() % phrases.size()]
-	var prosody := _get_prosody_for(emotion_name)
-	_speak(text, prosody)
+func speak_emotion_phrase(_emotion_name: String):
+	# 已解耦，不自动说话
+	pass
 
 
 func _speak(text: String, prosody_override: Dictionary = {}):
@@ -417,3 +427,167 @@ func _infer_emotion(text: String):
 			if _pet and _pet.has_method("set_emotion"):
 				_pet.set_emotion(emo, 0.6, "scene")
 			return
+
+
+# ═══════════════════════════════════════════════════════════════
+# WebSocket 客户端 — 魂身合一：连接 ove_bridge
+# ═══════════════════════════════════════════════════════════════
+
+func _ws_connect():
+	_ws = WebSocketPeer.new()
+	var err: Error = _ws.connect_to_url(_ws_url)
+	if err != OK:
+		printerr("[WS] Failed to connect: ", err, " -> ", _ws_url)
+		_ws = null
+	else:
+		print("[WS] Connecting to ", _ws_url, "...")
+
+
+func _ws_poll(delta: float):
+	if _ws == null:
+		# 重连
+		_ws_reconnect_timer += delta
+		if _ws_reconnect_timer > WS_RECONNECT_INTERVAL:
+			_ws_reconnect_timer = 0.0
+			_ws_connect()
+		return
+	
+	_ws.poll()
+	
+	var state: int = _ws.get_ready_state()
+	
+	match state:
+		WebSocketPeer.STATE_OPEN:
+			if not _ws_connected:
+				_ws_connected = true
+				_ws_reconnect_timer = 0.0
+				print("[WS] Connected to ove_bridge — 魂身合一")
+			# 收发消息
+			_ws_receive()
+			_ws_send_state(delta)
+		
+		WebSocketPeer.STATE_CLOSED:
+			if _ws_connected:
+				print("[WS] Disconnected, will reconnect...")
+				_ws_connected = false
+			_ws = null
+		
+		WebSocketPeer.STATE_CLOSING:
+			pass  # 等待关闭完成
+
+
+func _ws_receive():
+	while _ws.get_available_packet_count() > 0:
+		var pkt: PackedByteArray = _ws.get_packet()
+		var text := pkt.get_string_from_utf8()
+		_ws_handle_message(text)
+
+
+func _ws_handle_message(raw: String):
+	var json := JSON.new()
+	var err := json.parse(raw)
+	if err != OK:
+		printerr("[WS] Invalid JSON: ", raw.left(200))
+		return
+	
+	var data = json.get_data()
+	if not data is Dictionary:
+		return
+	
+	var msg_type: String = data.get("type", "")
+	
+	match msg_type:
+		"composite":
+			# 魂身合一核心：一次指令 = 说话 + 情绪 + 动作
+			call_deferred("_ws_on_composite", data)
+		"speak":
+			call_deferred("_on_message", data.get("sender", "Ove"), data.get("text", ""))
+		"emotion":
+			call_deferred("_on_emotion", data)
+		"action":
+			call_deferred("_on_action", data.get("action", ""))
+		"ping":
+			# 回复 pong
+			_ws_send({"type": "pong"})
+		"raw":
+			# 透传任意 Godot HTTP 端点
+			call_deferred("_ws_on_raw", data)
+		_:
+			print("[WS] Unknown message type: ", msg_type)
+
+
+func _ws_on_composite(data: Dictionary):
+	"""复合指令：说话 + 情绪 + 动作 一次完成"""
+	var text: String = data.get("text", "")
+	var emotion: String = data.get("emotion", "")
+	var action: String = data.get("action", "")
+	var sender: String = data.get("sender", "Ove")
+	
+	# 1. 设情绪（先设，语音用对应韵律）
+	if not emotion.is_empty():
+		_on_emotion({"emotion": emotion, "intensity": data.get("intensity", 0.7)})
+	
+	# 2. 做动作
+	if not action.is_empty():
+		_on_action(action)
+	
+	# 3. 说话（气泡 + TTS）
+	if not text.is_empty():
+		_on_message(sender, text)
+
+
+func _ws_on_raw(data: Dictionary):
+	"""透传原始指令到现有 HTTP 处理器"""
+	var path: String = data.get("path", "")
+	var payload: Dictionary = data.get("payload", {})
+	
+	match path:
+		"/message":
+			_on_message(payload.get("sender", "Ove"), payload.get("text", ""))
+		"/emotion":
+			_on_emotion(payload)
+		"/action":
+			_on_action(payload.get("action", ""))
+		"/scene":
+			_on_scene(payload.get("scene", ""))
+		"/tweak":
+			_on_tweak(payload)
+
+
+func _ws_send_state(delta: float):
+	"""定期上报机器人状态到 bridge"""
+	_ws_state_timer += delta
+	if _ws_state_timer < WS_STATE_INTERVAL:
+		return
+	_ws_state_timer = 0.0
+	
+	var emo := "neutral"
+	var intensity := 0.3
+	var idle_sec := 0.0
+	
+	if _pet:
+		if _pet.has_method("get_current_emotion"):
+			emo = _pet.get_current_emotion()
+		intensity = _pet.get("emotion_intensity") if _pet.get("emotion_intensity") != null else 0.3
+		var now := Time.get_ticks_msec() / 1000.0
+		var raw_last = _pet.get("_last_interaction_time")
+		var last: float = raw_last if raw_last != null else now
+		idle_sec = now - last
+	
+	var state := {
+		"type": "state",
+		"current_emotion": emo,
+		"intensity": intensity,
+		"idle_seconds": idle_sec,
+		"last_interaction": Time.get_ticks_msec() / 1000.0 - idle_sec,
+		"uptime_seconds": Time.get_ticks_msec() / 1000.0 - _ws_startup_ts,
+		"connected": true,
+	}
+	_ws_send(state)
+
+
+func _ws_send(data: Dictionary):
+	if _ws == null or _ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+	var text := JSON.stringify(data)
+	_ws.put_packet(text.to_utf8_buffer())

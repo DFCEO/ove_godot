@@ -21,6 +21,12 @@ __pycache__/
 *.bak
 backup_*/
 
+# Temp runtime files
+voice_inbox.txt
+voice_processed.txt
+*.wav
+!01.wav
+
 # OS
 .DS_Store
 Thumbs.db
