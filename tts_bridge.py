@@ -1,7 +1,13 @@
-"""TTS Bridge — Godot -> GPT-SoVITS, with sentence splitting, sequential playback, and emotion-driven speed"""
+"""
+TTS Bridge — edge-tts 云端合成
+================================
+替换原来的 GPT-SoVITS 本地推理，用微软免费 TTS API：
+- 合成快（1-2s/句），不需要 GPU
+- 支持中文女声 zh-CN-XiaoxiaoNeural
+- 保持句子拆分 + 顺序播放 + done 回调
+"""
 
 import sys, os
-# Detach from stdin to allow running in background/Hidden windows
 if os.name == 'nt':
     try:
         import msvcrt
@@ -10,37 +16,16 @@ if os.name == 'nt':
         pass
     sys.stdin = open(os.devnull, 'r')
 
-import http.server
-import json
-import threading
-import queue
-import tempfile
-import os
-import re
-import time
-import requests
+import http.server, json, threading, queue, tempfile, time, asyncio
 
-GSV_API = "http://127.0.0.1:9881"
 GODOT_PROGRESS = "http://127.0.0.1:18776/progress"
+CORE_MUTE_URL = "http://127.0.0.1:18779/mute?seconds=30"
+CORE_UNMUTE_URL = "http://127.0.0.1:18779/unmute"
+CORE_RESET_WAKE_URL = "http://127.0.0.1:18779/reset_wake"
 
-# Emotion -> speed factor (0.6~1.65, GSV range)
-EMOTION_SPEED = {
-    "neutral":    1.0,
-    "happy":      1.0,
-    "proud":      1.0,
-    "curious":    1.0,
-    "grateful":   1.0,
-    "surprised":  1.15,
-    "anxious":    1.3,
-    "angry":      1.2,
-    "annoyed":    1.2,
-    "defiant":    1.1,
-    "resigned":   0.95,
-    "lonely":     0.9,
-    "hurt":       0.9,
-    "melancholy": 0.85,
-    "sad":        0.85,
-}
+VOICE = "zh-CN-XiaoxiaoNeural"  # 微软中文女声
+RATE = "+0%"
+VOLUME = "+0%"
 
 try:
     import pygame
@@ -48,102 +33,124 @@ except ImportError:
     pygame = None
 
 _queue = queue.Queue()
-_running = True
-
-SENTENCE_SPLIT = re.compile(r'[,.;、，。；：:?？!！\n]')
+_stop_event = threading.Event()
 
 
 class TTSHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
+        if self.path not in ('/', '/tts'):
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b'{"error":"not found"}')
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
             raw = self.rfile.read(length)
             data = json.loads(raw)
             text = data.get("text", "")
-            prosody = data.get("prosody", {})
             if text:
-                _queue.put((text, prosody))
-                print(f"[TTS Bridge] queued: {text[:50]}", flush=True)
+                _queue.put(text)
+                print(f"[TTS] queued: {text[:50]}", flush=True)
         except Exception as e:
-            print(f"[TTS Bridge] ERROR: {e}", flush=True)
+            print(f"[TTS] ERROR: {e}", flush=True)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(b'{"ok":true}')
+    def log_message(self, *a): pass
 
-    def log_message(self, *args):
+
+def _mute_core():
+    try:
+        import urllib.request
+        urllib.request.urlopen(CORE_MUTE_URL, timeout=2)
+    except Exception:
+        pass
+
+def _unmute_core():
+    try:
+        import urllib.request
+        urllib.request.urlopen(CORE_UNMUTE_URL, timeout=2)
+    except Exception:
+        pass
+
+def _reset_wake_core():
+    try:
+        import urllib.request
+        urllib.request.urlopen(CORE_RESET_WAKE_URL, timeout=2)
+    except Exception:
+        pass
+
+def _signal_speak_done():
+    try:
+        import urllib.request
+        urllib.request.urlopen(GODOT_PROGRESS, data=json.dumps({"done": True}).encode(), timeout=3)
+    except Exception:
         pass
 
 
-def _get_speed(prosody: dict) -> float:
-    emotion = prosody.get("emotion", "neutral")
-    base = EMOTION_SPEED.get(emotion, 1.0)
-    # Godot may also send a rate modifier like "+10%" or "-10%"
-    rate_str = prosody.get("rate", "+0%")
+async def _synthesize_async(text: str) -> bytes:
+    """使用 edge-tts 合成语音，返回 WAV 字节"""
+    import edge_tts
+    communicate = edge_tts.Communicate(text, voice=VOICE, rate=RATE, volume=VOLUME)
+    # 存到临时文件
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
     try:
-        rate_mod = float(rate_str.strip("%").lstrip("+")) / 100.0
-    except ValueError:
-        rate_mod = 0.0
-    speed = base + rate_mod
-    return max(0.6, min(1.65, speed))
-
-
-def _split_sentences(text: str):
-    parts = SENTENCE_SPLIT.split(text)
-    return [p.strip() for p in parts if p.strip()]
-
-
-def _synthesize(text: str, speed: float = 1.0) -> bytes:
-    resp = requests.post(GSV_API, json={"text": text, "speed": speed}, timeout=120)
-    if resp.status_code != 200:
-        raise RuntimeError(f"GSV error: {resp.text[:200]}")
-    return resp.content
-
-
-def _speak(text: str, prosody: dict):
-    speed = _get_speed(prosody)
-    emotion = prosody.get("emotion", "neutral")
-    print(f"[TTS Bridge] Speaking ({emotion}, speed={speed:.2f}): {text[:50]}", flush=True)
-
-    sentences = _split_sentences(text)
-    if not sentences:
-        return
-
-    print(f"[TTS Bridge] Split into {len(sentences)} sentences", flush=True)
-
-    for i, sentence in enumerate(sentences):
-        t0 = time.time()
-        print(f"[TTS Bridge] [{i+1}/{len(sentences)}] Synthesizing: {sentence[:30]}", flush=True)
+        await communicate.save(tmp_path)
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    finally:
         try:
-            wav = _synthesize(sentence, speed)
-        except Exception as e:
-            print(f"[TTS Bridge] [{i+1}] FAILED: {e}", flush=True)
-            continue
-
-        dt = time.time() - t0
-        print(f"[TTS Bridge] [{i+1}] Done in {dt:.1f}s, {len(wav)} bytes", flush=True)
-
-        # Update Godot bubble
-        try:
-            requests.post(GODOT_PROGRESS, json={"text": sentence}, timeout=2)
-        except Exception:
+            os.unlink(tmp_path)
+        except OSError:
             pass
 
-        if pygame:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(wav)
-                tmp_path = tmp.name
+
+def _synthesize(text: str) -> bytes:
+    """同步包装 _synthesize_async"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(_synthesize_async(text))
+    finally:
+        loop.close()
+
+
+def _speak(text: str):
+    t0 = time.time()
+    print(f"[TTS] Synthesizing: {text[:30]}", flush=True)
+    try:
+        audio = _synthesize(text)
+    except Exception as e:
+        print(f"[TTS] FAILED: {e}", flush=True)
+        return
+    dt = time.time() - t0
+    print(f"[TTS] Done in {dt:.1f}s, {len(audio)} bytes", flush=True)
+
+    # 更新 Godot 气泡
+    try:
+        import urllib.request
+        urllib.request.urlopen(GODOT_PROGRESS, data=json.dumps({"text": text}).encode(), timeout=2)
+    except Exception:
+        pass
+
+    if pygame:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tmp.write(audio)
+            tmp_path = tmp.name
+        try:
+            pygame.mixer.music.load(tmp_path)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+        finally:
             try:
-                pygame.mixer.music.load(tmp_path)
-                pygame.mixer.music.play()
-                while pygame.mixer.music.get_busy():
-                    time.sleep(0.1)
-            finally:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 def worker():
@@ -152,10 +159,19 @@ def worker():
             pygame.mixer.init()
         except Exception as e:
             print(f"[TTS] pygame init failed: {e}")
-    while _running:
+    while not _stop_event.is_set():
         try:
-            text, prosody = _queue.get(timeout=1.0)
-            _speak(text, prosody)
+            text = _queue.get(timeout=1.0)
+            _mute_core()
+            try:
+                _speak(text)
+            finally:
+                # 播完后等回音消散再恢复麦克风
+                _signal_speak_done()
+                print(f"[TTS] Waiting 2s for echo decay...", flush=True)
+                time.sleep(0.5)
+                _unmute_core()
+                _reset_wake_core()
         except queue.Empty:
             continue
 
@@ -166,14 +182,13 @@ def main():
     t.start()
     w = threading.Thread(target=worker, daemon=True)
     w.start()
-    print("[TTS Bridge] Ready on http://127.0.0.1:18777", flush=True)
+    print(f"[TTS] edge-tts ready on http://127.0.0.1:18777 (voice={VOICE})", flush=True)
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        global _running
-        _running = False
-
+        _stop_event.set()
+        print("[TTS] Stopped", flush=True)
 
 if __name__ == "__main__":
     main()

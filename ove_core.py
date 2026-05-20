@@ -13,11 +13,8 @@ import json
 import time
 import sys
 import os
-import struct
 import threading
 import queue
-import re
-import random
 import argparse
 import urllib.request
 
@@ -38,8 +35,14 @@ SILENCE_DURATION = 1.0
 SILENCE_FRAMES = int(SILENCE_DURATION * 1000 / CHUNK_MS)
 MIN_SPEECH_DURATION = 0.8
 MIN_SPEECH_FRAMES = int(MIN_SPEECH_DURATION * 1000 / CHUNK_MS)
-VAD_THRESHOLD = 0.95
+VAD_THRESHOLD = 0.05  # Silero VAD 概率阈值，低到 0.05 以适应当前麦克风
+AUDIO_GAIN = 5.0     # 音频增益倍数（避免 30x 削波失真）
+VAD_RMS_THRESHOLD = 0.15  # RMS 能量阈值：VAD 概率低但 RMS 够高时也判为语音
 WHISPER_MODEL = "small"
+
+# ═══════════════════════════ 唤醒词配置 ═══════════════════════════
+WAKE_WORDS = ["你好黛玉", "你好戴玉", "hi黛玉", "hi戴玉"]
+AWAKE_TIMEOUT = 120  # 唤醒后无人说话自动休眠秒数
 
 WS_PORT = 18778           # Godot WebSocket 连接
 HTTP_PORT = 18779          # OpenClaw HTTP 调用
@@ -48,6 +51,13 @@ BRIDGE_VOICE_URL = f"http://127.0.0.1:{HTTP_PORT}/voice"
 _whisper_model = None
 _whisper_lock = threading.Lock()
 
+# 唤醒词状态机
+WAKE_STATES = {"idle": "idle", "awake": "awake"}
+_wake_state = WAKE_STATES["idle"]
+_wake_ts = 0.0  # 最后一次唤醒时间
+_muted_until = 0.0  # 静音截止时间戳（防自激反馈）
+_detector = None  # SpeechDetector 实例引用，供 mute 时清缓存
+
 # 跨线程 asyncio 调度
 _main_loop = None
 
@@ -55,85 +65,42 @@ _main_loop = None
 def log(msg: str):
     print(f"[Core {time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
-# ═══════════════════════════ 林黛玉回复模板 ═══════════════════════════
-VOICE_REPLIES = {
-    "你好|嗨|hello|hi|早上好|下午好|晚上好|来了": {
-        "replies": ["嗯……你来了。", "你倒还记得我。", "来了？我还以为你把我忘了呢。"],
-        "emotion": "curious", "action": "nod",
-    },
-    "天气": {
-        "replies": ["今儿天色倒好，不冷不热的。", "风大了些，仔细别着凉。", "阴一阵晴一阵的，怪没趣。"],
-        "emotion": "curious", "action": "nod",
-    },
-    "干嘛|做什么|在吗|在干嘛": {
-        "replies": ["不过是闲坐罢了，有什么事？", "我能做什么，发呆罢了。", "你又来找我做什么？"],
-        "emotion": "curious", "action": "nod",
-    },
-    "再见|拜拜|bye|走了|去吧": {
-        "replies": ["这就走了？也罢……", "去吧，不必管我。", "嗯，你去吧。"],
-        "emotion": "melancholy", "action": "nod",
-    },
-    "吃|饭|饿": {
-        "replies": ["我没什么胃口……", "你倒是有心，还惦记着吃。", "不饿，你自去吃吧。"],
-        "emotion": "melancholy", "action": "nod",
-    },
-    "哭|伤心|难过|不开心": {
-        "replies": ["你又来惹我。", "我哭我的，与你什么相干。", "这泪也不是为你流的……"],
-        "emotion": "sad", "action": "nod",
-    },
-    "笑|开心|高兴|好": {
-        "replies": ["你笑什么？我可不觉得好笑。", "有什么可高兴的……", "哼，你倒是开心。"],
-        "emotion": "annoyed", "action": "nod",
-    },
-    "花|落花|黛玉": {
-        "replies": ["花谢花飞花满天，红消香断有谁怜……", "你见那落花了吗？"],
-        "emotion": "melancholy", "action": "nod",
-    },
-    "诗|词|书|读": {
-        "replies": ["你也懂诗？倒要请教了。", "这几日倒读了几首好诗。", "诗是好的，懂的人却不多。"],
-        "emotion": "proud", "action": "nod",
-    },
-    "谁|名字|你": {
-        "replies": ["我姓林，叫黛玉。你又是谁？", "你连我是谁都不知道？"],
-        "emotion": "curious", "action": "nod",
-    },
-    "喜欢|爱": {
-        "replies": ["胡说什么……谁要你喜欢！", "你又来说这些疯话。", "哼，说得好听。"],
-        "emotion": "annoyed", "action": "nod",
-    },
-    "帮|帮忙|help": {
-        "replies": ["你也知道来找我了。", "什么事？说吧。", "求我的时候倒想起我来了。"],
-        "emotion": "proud", "action": "nod",
-    },
-    "谢谢|谢": {
-        "replies": ["谢什么，不值什么。", "不必谢。", "嗯。"],
-        "emotion": "curious", "action": "nod",
-    },
-    "困|睡觉|晚安|休息": {
-        "replies": ["累了就歇着吧。", "去吧，梦里可别梦见我。", "你也早些休息。"],
-        "emotion": "melancholy", "action": "nod",
-    },
-    "歌|唱|曲|音乐": {
-        "replies": ["曲子么，我倒是会几首。", "你想听我唱？怕你听了睡不着。"],
-        "emotion": "proud", "action": "nod",
-    },
-}
+# ═══════════════════════════ 唤醒词检测 ═══════════════════════════
 
-FALLBACKS = [
-    ("嗯？你说什么？", "curious", "nod"),
-    ("我没听清，再说一遍吧。", "curious", "nod"),
-    ("这话说得不清不楚的……", "annoyed", "nod"),
-]
+def is_wake_word(text: str) -> bool:
+    """检查文本是否包含唤醒词（含模糊匹配：编辑距离 ≤ 2）
+    应对 Whisper 对"大/戴→黛、衣/鱼/月→玉"等常见识别偏差。
+    阈值 2 覆盖大多数 1 字偏差场景，极少误触发。
+    """
+    t = text.lower().replace(" ", "")
+    for w in WAKE_WORDS:
+        wc = w.lower().replace(" ", "")
+        # 精确子串匹配
+        if wc in t:
+            return True
+        # 模糊匹配：允许最多 2 字差异
+        for i in range(len(t) - len(wc) + 1):
+            substr = t[i:i+len(wc)]
+            diffs = sum(1 for a, b in zip(substr, wc) if a != b)
+            if diffs <= 2:
+                return True
+    return False
 
-def find_voice_reply(text: str) -> tuple[str, str, str]:
-    """关键词匹配生成回复 → (文本, 情绪, 动作)"""
-    # 繁→简 简易映射（覆盖常见繁体）
-    trans = str.maketrans('氣樣麼樣麼', '气样么样么')
-    text = text.translate(trans)
-    for pattern, cfg in VOICE_REPLIES.items():
-        if re.search(pattern, text.lower()):
-            return random.choice(cfg["replies"]), cfg["emotion"], cfg["action"]
-    return random.choice(FALLBACKS)
+
+def wake_state() -> str:
+    global _wake_state
+    return _wake_state
+
+
+def set_wake_state(state: str):
+    global _wake_state, _wake_ts
+    _wake_state = state
+    _wake_ts = time.time()
+    log(f"Wake state → {state}")
+
+
+def is_awake() -> bool:
+    return _wake_state == WAKE_STATES["awake"]
 
 
 # ═══════════════════════════ 耳朵: Whisper ═══════════════════════════
@@ -183,11 +150,66 @@ class MicCapture:
 
     def start(self):
         if self.device is None:
-            self.device = sd.default.device[0]
+            deft = sd.default.device
+            log(f"Default device: {deft} (type={type(deft).__name__})")
+            if isinstance(deft, (list, tuple)):
+                self.device = deft[0]
+            elif isinstance(deft, int):
+                self.device = deft
+            else:
+                self.device = sd.default.device
+            log(f"Initial preferred device: {self.device}")
+        # 验证设备是否为输入设备，并尝试查找最佳麦克风
+        self.device = self._resolve_input_device(self.device)
         info = sd.query_devices(self.device)
         log(f"Mic: [{self.device}] {info['name']} @ {self.rate}Hz")
         self._running = True
         threading.Thread(target=self._run, daemon=True).start()
+
+    def _resolve_input_device(self, preferred: int) -> int:
+        """解析麦克风设备：优先使用指定的，如果失败则自动查找。"""
+        import sounddevice as sd
+
+        # 检查指定设备是否为有效的输入设备
+        if preferred is not None:
+            try:
+                info = sd.query_devices(preferred)
+                if info["max_input_channels"] > 0:
+                    # 尝试打开确认可用
+                    sd.check_input_settings(device=preferred, samplerate=self.rate, channels=1)
+                    return preferred
+            except Exception:
+                log(f"Device [{preferred}] not usable, scanning for mic...")
+
+        # 自动扫描：按优先级查找麦克风
+        # 优先级：Realtek 阵列 > 其他输入设备 > 默认输入
+        preferred_names = ["阵列", "Array", "Realtek", "麦克风", "Microphone", "mic"]
+        candidates = []
+
+        for i, d in enumerate(sd.query_devices()):
+            if d["max_input_channels"] == 0:
+                continue
+            try:
+                sd.check_input_settings(device=i, samplerate=self.rate, channels=1)
+                priority = 0
+                name = d["name"].lower()
+                for pn in preferred_names:
+                    if pn.lower() in name:
+                        priority += 1
+                candidates.append((priority, i, d["name"]))
+            except Exception:
+                pass
+
+        if candidates:
+            # 选优先级最高的（优先 Realtek 阵列）
+            candidates.sort(key=lambda x: (-x[0], x[1]))
+            best = candidates[0][1]
+            log(f"Auto-selected mic: [{best}] {sd.query_devices(best)['name']}")
+            return best
+
+        # 最后兜底：默认输入设备
+        log(f"WARN: falling back to default input device")
+        return sd.default.device[0]
 
     def _run(self):
         try:
@@ -229,23 +251,36 @@ class SpeechDetector:
         self._on_text = cb
 
     def feed(self, chunk: np.ndarray):
+        # 静音期间跳过所有音频处理
+        if time.time() < _muted_until:
+            return
+        # 增益放大后裁剪到 [-1, 1]，防止 VAD 模型收到异常值
+        chunk = np.clip(chunk * AUDIO_GAIN, -1.0, 1.0)
         self._vad_buf.extend(chunk.tolist())
         while len(self._vad_buf) >= 512:
             vc = np.array(self._vad_buf[:512], dtype=np.float32)
             self._vad_buf = self._vad_buf[512:]
             self._process(vc)
 
+    def clear_buffers(self):
+        """清空 VAD 和语音缓存（静音时调用，防止已缓冲音频继续处理）"""
+        self._vad_buf.clear()
+        self._speech_buf.clear()
+        self._speaking = False
+        self._silence_cnt = 0
+        self._speech_frames = 0
+
     def _process(self, chunk: np.ndarray):
         prob = vad_prob(chunk)
+        rms_energy = float(np.sqrt(np.mean(chunk ** 2)))
+        # 混合判决：VAD 模型概率，或 RMS 能量够高且 VAD 不完全是零
+        is_speech = prob > VAD_THRESHOLD or (rms_energy > VAD_RMS_THRESHOLD and prob > 0.001)
         self._debug_cnt += 1
-        if self._debug_cnt >= 33:
-            rms = float(np.sqrt(np.mean(chunk ** 2)))
+        if self._debug_cnt >= 33:  # 约每秒输出一次
             self._debug_cnt = 0
-            # Quiet debug - only log if speaking
-            if prob > 0.5:
-                log(f"Audio: rms={rms:.4f} vad={prob:.3f}")
+            log(f"Audio: rms={rms_energy:.4f} vad={prob:.3f} speech={is_speech}")
 
-        if prob > VAD_THRESHOLD:
+        if is_speech:
             if not self._speaking:
                 self._speaking = True
                 self._speech_buf = []
@@ -278,19 +313,43 @@ class SpeechDetector:
         if text and text.strip():
             text = text.strip()
             log(f"→ \"{text}\"")
-            self._text_to_queue(text)
-            if self._on_text:
+            handled = self._handle_text(text)
+            if handled and self._on_text:
                 self._on_text(text)
 
-    def _text_to_queue(self, text: str):
+    def _handle_text(self, text: str) -> bool:
+        """
+        唤醒词门控：
+        - IDLE 状态：只有检测到唤醒词才推送
+        - AWAKE 状态：所有语音都推送（约 60s 无人说话后自动休眠）
+        Returns: True if text was pushed to queue
+        """
+        if is_awake():
+            # 唤醒状态：正常推送，重置计时
+            # 用模块级函数替代直接 global，避免与类耦合
+            set_wake_state(WAKE_STATES["awake"])  # 重置 _wake_ts
+            self._text_to_queue(text, source="voice_awake")
+            log(f"[Awake] → queued")
+            return True
+        elif is_wake_word(text):
+            # 检测到唤醒词：切换到唤醒状态，推送唤醒提示
+            set_wake_state(WAKE_STATES["awake"])
+            log(f"[Wake] '{WAKE_WORDS[0]}' detected!")
+            self._text_to_queue(WAKE_WORDS[0], source="wake")
+            return True
+        else:
+            log(f"[Idle] ignored '{text}' (no wake word)")
+            return False
+
+    def _text_to_queue(self, text: str, source: str = "voice"):
         """推送到 HTTP voice 端点（给自己，供 OpenClaw 查询）"""
         try:
-            body = json.dumps({"text": text, "source": "voice"}).encode()
+            body = json.dumps({"text": text, "source": source}).encode()
             req = urllib.request.Request(BRIDGE_VOICE_URL, data=body,
                 headers={"Content-Type": "application/json"}, method="POST")
             urllib.request.urlopen(req, timeout=2)
-        except Exception:
-            pass
+        except Exception as e:
+            log(f"_text_to_queue FAILED: {e}")
 
 
 # ═══════════════════════════ 嘴巴: WebSocket 服务器 (Godot连) ═══════════════════════════
@@ -363,12 +422,39 @@ async def handle_http(reader, writer):
         resp = json.dumps({"voices": vs}, ensure_ascii=False)
     elif method == "POST" and path == "/voice":
         resp = _http_add_voice(body)
+    elif method == "GET" and path == "/voice/flush":
+        _voice_queue.clear()
+        resp = json.dumps({"status": "ok", "flushed": True})
     elif method == "GET" and path == "/events":
         es = list(_event_queue); _event_queue.clear()
         resp = json.dumps({"events": es}, ensure_ascii=False)
     elif method == "GET" and path == "/health":
         resp = json.dumps({"status": "ok", "godot_connected": _godot_ws is not None,
                            "uptime": time.time() - _startup_ts})
+    elif method == "GET" and path == "/wake":
+        resp = json.dumps({"state": _wake_state,
+                           "since": _wake_ts,
+                           "idle_for": time.time() - _wake_ts if _wake_state == "idle" else 0})
+    elif method == "GET" and path.startswith("/mute"):
+        # ?seconds=15 — 静音麦克风 N 秒（防 TTS 自激反馈）
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(path).query)
+        secs = float(qs.get("seconds", [15])[0])
+        global _muted_until
+        _muted_until = time.time() + secs
+        # 同时清空 VAD/语音缓存，防止缓冲段继续处理
+        if _detector:
+            _detector.clear_buffers()
+        resp = json.dumps({"muted": True, "until": _muted_until, "seconds": secs})
+    elif method == "GET" and path == "/unmute":
+        _muted_until = 0.0
+        if _detector:
+            _detector.clear_buffers()
+        resp = json.dumps({"muted": False, "until": _muted_until})
+    elif method == "GET" and path == "/reset_wake":
+        # TTS 播放结束后：如果已休眠则重新唤醒，如果还醒着则重置计时
+        set_wake_state(WAKE_STATES["awake"])
+        resp = json.dumps({"state": _wake_state, "reset": True})
     else:
         status, resp = 404, json.dumps({"error": "not found"})
 
@@ -415,23 +501,9 @@ def _http_add_voice(body: str) -> str:
 _last_voice_id = None
 
 # 语音 → 回复 → 推 Godot（通过线程安全队列）
-_pending_replies = queue.Queue()
-
 def on_voice_text(text: str):
-    """收到语音文本 → 存入队列 + 写信号文件通知 cron 立即处理"""
-    global _last_voice_id
-    vid = f"{text}_{time.time():.0f}"
-    if vid == _last_voice_id:
-        return
-    _last_voice_id = vid
-    # 写信号文件，cron 轮询检测
-    try:
-        sig_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice_ready.signal")
-        with open(sig_path, "w") as f:
-            f.write(str(time.time()))
-    except Exception:
-        pass
-    log(f"→ Voice queued, signal sent")
+    """收到语音文本（voice agent 通过 HTTP 轮询，无需额外信号）"""
+    log(f"→ Voice queued ({len(_voice_queue)} pending)")
 
 
 # ═══════════════════════════ 心跳 ═══════════════════════════
@@ -459,6 +531,8 @@ async def main(args):
     # 2. 启动麦克风 + 语音检测
     mic = MicCapture(SAMPLE_RATE, device_index=args.device)
     detector = SpeechDetector()
+    global _detector
+    _detector = detector
     detector.on_text(on_voice_text)
     mic.start()
 
@@ -470,6 +544,8 @@ async def main(args):
     log(f"WS:  ws://127.0.0.1:{WS_PORT}")
     log(f"HTTP: http://127.0.0.1:{HTTP_PORT}")
     log("Listening... (Ctrl+C to stop)")
+    log(f"Wake word: {WAKE_WORDS[0]}, timeout: {AWAKE_TIMEOUT}s")
+    log(f"Initial state: {_wake_state}")
 
     # 4. 麦克风采集 → VAD 处理 循环
     async def mic_loop():
@@ -479,8 +555,20 @@ async def main(args):
                 detector.feed(chunk)
             await asyncio.sleep(0)
 
+    # 5. 唤醒超时检查（每 1s，实际超时精度 ±1s）
+    async def wake_timeout_check():
+        global _wake_state
+        while True:
+            await asyncio.sleep(1)
+            if _wake_state == WAKE_STATES["awake"]:
+                idle_for = time.time() - _wake_ts
+                if idle_for > AWAKE_TIMEOUT:
+                    log(f"[Timeout] idle {idle_for:.0f}s > {AWAKE_TIMEOUT}s → sleep")
+                    set_wake_state(WAKE_STATES["idle"])
+
     await asyncio.gather(
         mic_loop(),
+        wake_timeout_check(),
         ws_heartbeat(),
         ws_srv.wait_closed(),
         http_srv.serve_forever(),

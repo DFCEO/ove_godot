@@ -9,6 +9,7 @@ var _server: TCPServer = null
 var _pet: Node = null
 var _running := false
 var _last_pushed_emotion := ""   # 防反馈循环：记录上次外源推送的情绪
+var _pending_screen_text := ""  # 待语音播完后显示的屏幕文字
 
 # ---- WebSocket 客户端 (→ ove_bridge) ----
 var _ws = null  # WebSocketPeer (untyped to avoid GDScript strict-mode issues)
@@ -140,14 +141,21 @@ func _handle_connection(stream: StreamPeerTCP):
 			resp_body = '{"error":"invalid json"}'
 	
 	elif method == "POST" and path == "/progress":
-		# TTS bridge callback: update bubble to current sentence
+		# TTS bridge callback: update bubble / signal done
 		route_data = _parse_json(body)
-		if route_data is Dictionary and route_data.has("text"):
-			resp_body = '{"status":"ok"}'
-			call_deferred("_on_progress", route_data.get("text", ""))
+		if route_data is Dictionary:
+			if route_data.has("done") and route_data.get("done", false):
+				resp_body = '{"status":"ok"}'
+				call_deferred("_on_speak_done")
+			elif route_data.has("text"):
+				resp_body = '{"status":"ok"}'
+				call_deferred("_on_progress", route_data.get("text", ""))
+			else:
+				resp_code = 400
+				resp_body = '{"error":"invalid body"}'
 		else:
 			resp_code = 400
-			resp_body = '{"error":"missing text"}'
+			resp_body = '{"error":"invalid json"}'
 	
 	elif method == "POST" and path == "/action":
 		route_data = _parse_json(body)
@@ -282,6 +290,15 @@ func _on_progress(text: String):
 		_pet.show_message("Ove", text)
 
 
+func _on_speak_done():
+	"""TTS 播放完毕回调：显示暂存的屏幕文字（如果有）"""
+	if not _pending_screen_text.is_empty():
+		if _pet and _pet.has_method("show_screen_message"):
+			_pet.show_screen_message(_pending_screen_text)
+		_pending_screen_text = ""
+	print("[Speak] Done, screen text shown")
+
+
 # ---- TTS + 韵律 ----
 
 # 情绪自动台词已全部取消（解耦），只保留视觉表现
@@ -360,73 +377,7 @@ func _speak_greeting():
 	_speak(greeting, _get_prosody_for("neutral"))
 
 
-# ---- 自然语言 → 动作 ----
-const ACTION_TRIGGERS := {
-	"伸手": "point_right", "右臂": "point_right",
-	"左手": "point_left", "左臂": "point_left",
-	"双手前伸": "both_forward", "前伸": "both_forward",
-	"双手后摆": "both_back", "后摆": "both_back",
-	"展开": "spread", "张开": "spread",
-	"右摆": "right_side", "右手": "point_right",
-	"左摆": "left_side",
-	"点头": "nod", "嗯": "nod",
-	"抬头": "lookup",
-	"摇头": "shake_head",
-	"歪头": "tilt_head",
-	"跳": "bounce", "弹跳": "bounce", "蹦": "bounce",
-}
-
-
-func _infer_action(text: String):
-	for kw: String in ACTION_TRIGGERS:
-		if kw in text:
-			var action: String = ACTION_TRIGGERS[kw]
-			if _pet and _pet.has_method("do_action"):
-				_pet.do_action(action)
-			return
-
-const SCENE_TRIGGERS := {
-	"葬花": "葬花", "落花": "葬花",
-	"戏文": "听戏入神", "听戏": "听戏入神",
-	"拌嘴": "拌嘴扭头", "扭头": "拌嘴扭头", "宝玉": "拌嘴扭头",
-	"怔住": "怔住（惊喜）", "什么？": "怔住（惊喜）", "什么！": "怔住（惊喜）",
-	"冷笑": "冷笑", "不以为然": "冷笑",
-	"摇头晃脑": "摇头晃脑",
-}
-
-func _infer_scene(text: String):
-	# 场景正在播放时不重复触发
-	if _pet and _pet.has_method("is_scene_busy") and _pet.is_scene_busy():
-		return
-	for kw: String in SCENE_TRIGGERS:
-		if kw in text:
-			if _pet and _pet.has_method("play_scene"):
-				_pet.play_scene(SCENE_TRIGGERS[kw])
-			return
-
-
-const EMOTION_TRIGGERS := {
-	"开心": "happy", "高兴": "happy", "哈哈": "happy", "好棒": "happy",
-	"难过": "sad", "伤心": "sad", "唉": "sad", "哭": "sad",
-	"花": "melancholy", "落花": "melancholy", "秋天": "melancholy",
-	"生气": "angry", "烦": "annoyed", "讨厌": "annoyed",
-	"惊讶": "surprised", "哇": "surprised",
-	"好奇": "curious", "咦": "curious",
-	"诗": "proud", "寂寞": "lonely", "孤独": "lonely",
-	"谢谢": "grateful", "感谢": "grateful",
-	"急": "anxious", "算了": "resigned", "随便": "resigned",
-}
-
-func _infer_emotion(text: String):
-	for kw: String in EMOTION_TRIGGERS:
-		if kw in text:
-			var emo: String = EMOTION_TRIGGERS[kw]
-			# 防反馈：如果外源刚推过同样的情绪，跳过
-			if emo == _last_pushed_emotion:
-				return
-			if _pet and _pet.has_method("set_emotion"):
-				_pet.set_emotion(emo, 0.6, "scene")
-			return
+# 自然语言→动作/场景/情绪 已迁移至 voice agent（通过 composite 消息控制）
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -532,14 +483,13 @@ func _ws_on_composite(data: Dictionary):
 	if not action.is_empty():
 		_on_action(action)
 	
-	# 3. 说话（气泡 + TTS）
+	# 3. 说话（气泡 + TTS），先显示气泡
 	if not text.is_empty():
 		_on_message(sender, text)
 	
-	# 4. 屏幕面板（长文本/复杂信息）
+	# 4. 屏幕文字暂存，等 TTS 播完后再显示（TTS 桥发 done 回调时触发）
 	if not screen_text.is_empty():
-		if _pet and _pet.has_method("show_screen_message"):
-			_pet.show_screen_message(screen_text)
+		_pending_screen_text = screen_text
 
 
 func _ws_on_raw(data: Dictionary):

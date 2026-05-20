@@ -909,7 +909,7 @@ func _create_screen_panel():
 	
 	_screen_panel = Panel.new()
 	_screen_panel.position = Vector2(40, 80)
-	_screen_panel.size = Vector2(360, 200)
+	_screen_panel.size = Vector2(220, 200)
 	_screen_panel.visible = false
 	
 	var style := StyleBoxFlat.new()
@@ -927,7 +927,7 @@ func _create_screen_panel():
 	
 	_screen_label = RichTextLabel.new()
 	_screen_label.position = Vector2(14, 10)
-	_screen_label.size = Vector2(332, 180)
+	_screen_label.size = Vector2(192, 180)
 	_screen_label.add_theme_color_override("default_color", Color(0.85, 0.9, 1.0, 1))
 	_screen_label.add_theme_font_size_override("normal_font_size", 13)
 	_screen_label.bbcode_enabled = true
